@@ -12,7 +12,15 @@ from gensim.models import KeyedVectors
 
 class EdgeSampler(Sampler):
 
-    def __init__(self, edges, edge_freq, smoothing_rate_for_edge, edge_table_size, node_freq, verbose=True):
+    def __init__(
+        self,
+        edges,
+        edge_freq,
+        smoothing_rate_for_edge,
+        edge_table_size,
+        node_freq,
+        verbose=True
+    ):
         self.edge_num = len(edges)
         self.edge_freq = edge_freq
         self.smoothing_rate_for_edge = smoothing_rate_for_edge
@@ -22,17 +30,25 @@ class EdgeSampler(Sampler):
 
         self.sample_edge_table = np.zeros(self.edge_table_size, dtype=int)
         index = 0
+        # negative samplingの確率込み
         p = c / c.sum()
         d = p[index]
+        # sample_edge_tableにサンプリング用の配列を作成する。
+        # self.edge_table_size(凄く大きな数)の長さの配列に、
+        # 要素がiであるものが、self.edge_table_size * p[i]だけある
+        # 配列に仕上げる。randpermを組み合わせると、negative samplingが可能となる。
         for i in tqdm(range(self.edge_table_size)):
             self.sample_edge_table[i] = index
             if i / self.edge_table_size > d:
                 index += 1
                 d += p[index]
             if index >= self.edge_num:
-                index = self.edge_num - 1;
+                index = self.edge_num - 1
+        # print(self.sample_edge_table)
+        # print(self.sample_edge_table.shape)
 
     def __iter__(self):
+        # randperm is a function that returns a random permutation of 0 to n-1
         return (self.sample_edge_table[i] for i in torch.randperm(self.edge_table_size))
 
     def __len__(self):
@@ -54,8 +70,10 @@ class GraphDataset(Dataset):
 
         if task == "linkpred":
             assert data_vectors is not None
-            train_node, test_node = train_test_split(list(node2id.keys()), test_size=0.2, random_state=seed)
-            train_node, valid_node = train_test_split(train_node, test_size=0.2, random_state=seed)
+            train_node, test_node = train_test_split(
+                list(node2id.keys()), test_size=0.2, random_state=seed)
+            train_node, valid_node = train_test_split(
+                train_node, test_size=0.2, random_state=seed)
             train_node_set = set(train_node)
             node_freq = list()
             valid_node_set = set(valid_node)
@@ -66,11 +84,13 @@ class GraphDataset(Dataset):
             for i in train_node:
                 new_data_vectors[new_node2id[i]] = data_vectors[node2id[i]]
                 node_freq.append(id2freq[node2id[i]])
-            for i in valid_node: new_data_vectors[new_node2id[i]] = data_vectors[node2id[i]]
-            for i in test_node: new_data_vectors[new_node2id[i]] = data_vectors[node2id[i]]
+            for i in valid_node:
+                new_data_vectors[new_node2id[i]] = data_vectors[node2id[i]]
+            for i in test_node:
+                new_data_vectors[new_node2id[i]] = data_vectors[node2id[i]]
             new_node2id = dict(new_node2id)
 
-            id2node = dict((y,x) for x,y in node2id.items())
+            id2node = dict((y, x) for x, y in node2id.items())
             train_edges = list()
             edge_freq = list()
 
@@ -81,7 +101,7 @@ class GraphDataset(Dataset):
             for edge, edgefreq in edges2freq.items():
                 i, j = [id2node[k] for k in edge]
                 if i in train_node_set and j in train_node_set:
-                    train_edges.append((new_node2id[i],new_node2id[j]))
+                    train_edges.append((new_node2id[i], new_node2id[j]))
                     edge_freq.append(edgefreq)
                     neighbor_train[new_node2id[i]].add(new_node2id[j])
                     neighbor_train[new_node2id[j]].add(new_node2id[i])
@@ -120,7 +140,11 @@ class GraphDataset(Dataset):
             self.node2id = node2id
             self.data_vectors = data_vectors
             self.total_node_num = len(node2id)
+            # the number of train nodes are the number of total nodes if
+            # reconst mode
             self.train_node_num = self.total_node_num
+
+            # edge-related variables
             self.edges = list()
             self.edge_freq = list()
             for edge, freq in edges2freq.items():
@@ -130,21 +154,26 @@ class GraphDataset(Dataset):
             self.edge_freq = np.array(self.edge_freq, dtype=np.float)
             self.total_edge_num = len(self.edges)
             self.train_edge_num = self.total_edge_num
+
+            # node-related varibales
             self.node_freq = np.zeros(self.train_node_num, dtype=np.float)
-            for i,f in id2freq.items():
+            for i, f in id2freq.items():
                 self.node_freq[i] = f
+
             self.max_tries = self.nnegs * self.ntries
             self.neighbor_train = defaultdict(lambda: set())
             for i, j in self.edges:
                 self.neighbor_train[i].add(j)
                 self.neighbor_train[j].add(i)
+
             self.neighbor_train = dict(self.neighbor_train)
+            # None for validation and test
             self.neighbor_valid = None
             self.neighbor_test = None
             assert len(self.neighbor_train) == self.train_node_num
 
+        # ノードの選択確率?negative samplingっぽい感じにはなっている
         c = self.node_freq ** self.smoothing_rate_for_node
-
         self.sample_node_table = np.zeros(self.node_table_size, dtype=int)
         index = 0
         p = c / c.sum()
@@ -155,18 +184,21 @@ class GraphDataset(Dataset):
                 index += 1
                 d += p[index]
             if index >= self.train_node_num:
-                index = self.train_node_num - 1;
+                index = self.train_node_num - 1
 
-        self.sampler = EdgeSampler(self.edges, self.edge_freq, self.smoothing_rate_for_edge, self.edge_table_size, self.node_freq)
+        self.sampler = EdgeSampler(
+            self.edges, self.edge_freq, self.smoothing_rate_for_edge, self.edge_table_size, self.node_freq)
 
     def __len__(self):
         return self.train_edge_num
 
     def __getitem__(self, i):
+        # positive sample
         i, j = [int(x) for x in self.edges[i]]
         if np.random.randint(2) == 1:
             i, j = j, i
 
+        # negative sampling. iもjも含まないものとする.
         negs = set()
         ntries = 0
         nnegs = self.nnegs
@@ -177,9 +209,13 @@ class GraphDataset(Dataset):
                 negs.add(n)
             ntries += 1
         ix = [i, j] + list(negs)
+
+        # negative sampleが足りない時は、既にサンプリングしたものを複製する。
         while len(ix) < nnegs + 2:
             ix.append(ix[np.random.randint(2, len(ix))])
 
+        # The target variable is dummy. The first element of ix is the positive
+        # sample, and the remaining is the set of negative samples.
         return torch.LongTensor(ix).view(1, len(ix)), torch.zeros(1).long()
 
     @classmethod
@@ -188,11 +224,12 @@ class GraphDataset(Dataset):
         return Variable(torch.cat(inputs, 0)), Variable(torch.cat(targets, 0))
 
 
-def preprocess_hirearchy(word2vec_path, use_rich_information=False, verbose=True):
+def preprocess_hierarchy(word2vec_path, use_rich_information=False, verbose=True):
     if word2vec_path is not None:
         assert use_rich_information == False
+
     def _clean(word):
-        if use_rich_information :
+        if use_rich_information:
             return word
         else:
             word = word.split(".n.")[0]
@@ -223,17 +260,25 @@ def preprocess_hirearchy(word2vec_path, use_rich_information=False, verbose=True
                 id_1, id_2 = id_2, id_1
             edges2freq[(id_1, id_2)] = 1
 
-    if verbose: pbar = tqdm(total = len(list(wn.all_synsets(pos='n'))))
+    if verbose:
+        pbar = tqdm(total=len(list(wn.all_synsets(pos='n'))))
     for synset in wn.all_synsets(pos='n'):
-        if verbose: pbar.update(1)
+        if verbose:
+            pbar.update(1)
         for hyper in synset.closure(lambda s: s.hypernyms()):
-            word1 = _clean(hyper.name());word2 = _clean(synset.name());_memo(word1, word2)
+            word1 = _clean(hyper.name())
+            word2 = _clean(synset.name())
+            _memo(word1, word2)
         for instance in synset.instance_hyponyms():
             for hyper in instance.closure(lambda s: s.instance_hypernyms()):
-                word1 = _clean(hyper.name());word2 = _clean(instance.name());_memo(word1, word2)
+                word1 = _clean(hyper.name())
+                word2 = _clean(instance.name())
+                _memo(word1, word2)
                 for h in hyper.closure(lambda s: s.hypernyms()):
-                    word1 = _clean(h.name());_memo(word1, word2)
-    if verbose: pbar.close()
+                    word1 = _clean(h.name())
+                    _memo(word1, word2)
+    if verbose:
+        pbar.close()
 
     word2id = dict(word2id)
     id2freq = dict(id2freq)
@@ -252,7 +297,8 @@ def preprocess_hirearchy(word2vec_path, use_rich_information=False, verbose=True
 
 def iter_line(fname, sep='\t', type=tuple, comment='#', return_idx=False, convert=None):
     with open(fname, 'r') as fin:
-        if return_idx: index = -1
+        if return_idx:
+            index = -1
         for line in fin:
             if line[0] == comment:
                 continue
@@ -273,14 +319,17 @@ def preprocess_co_author_network(dir_path, undirect=True, seed=0):
     author2id = defaultdict(lambda: len(author2id))
     edges2freq = dict()
     for _i, _j in iter_line(dir_path + "/graph_dblp.txt", sep='\t', type=tuple, convert=int):
-        i=author2id[_i];j=author2id[_j]
-        if i > j: j, i = i, j
-        edges2freq[(i,j)] = 1
+        i = author2id[_i]
+        j = author2id[_j]
+        if i > j:
+            j, i = i, j
+        edges2freq[(i, j)] = 1
 
     author2id = dict(author2id)
 
     vectors = np.empty((len(author2id), 33))
-    selected_attributes = np.array([ 0,  1,  2,  3,  4,  5,  6,  7,  8,  9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 34, 35, 37])
+    selected_attributes = np.array([0,  1,  2,  3,  4,  5,  6,  7,  8,  9, 10, 11, 12,
+                                    13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 34, 35, 37])
     for i, vec in iter_line(dir_path + "/db_normalz_clus.txt", sep=',', type=np.array, convert=float, return_idx=True):
         assert vec.shape[0] == 38
         if i in author2id:
@@ -302,12 +351,15 @@ def preprocess_co_author_network(dir_path, undirect=True, seed=0):
 
 
 def preprocess_webkb_network(dir_path):
+    print(dir_path)
     node2id = defaultdict(lambda: len(node2id))
     edges2freq = dict()
     for _i, _j in iter_line(dir_path + "/WebKB.cites", sep='\t', type=tuple, convert=str):
-        i = node2id[_i];j = node2id[_j]
-        if i > j: j, i = i, j
-        edges2freq[(i,j)] = 1
+        i = node2id[_i]
+        j = node2id[_j]
+        if i > j:
+            j, i = i, j
+        edges2freq[(i, j)] = 1
     node2id = dict(node2id)
     id2freq = defaultdict(lambda: 0)
     for key, value in edges2freq.items():

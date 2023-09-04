@@ -4,24 +4,119 @@ import torch.nn.init as init
 from torch import nn
 from torch.autograd import Function
 
+# class MDL_WIPS(nn.Module):
 
-class Embedding(nn.Module):
+#     def __init__(self, opt):
+#         super(MDL_WIPS, self).__init__()
+#         # print(opt)
+#         # parameters
+#         self.model = opt["model_name"]
+#         self.total_node_num = opt["total_node_num"]
+#         self.train_node_num = opt["train_node_num"]
+#         self.parameter_num = opt["parameter_num"]
+#         assert opt["data_vectors"].shape[0] == opt["total_node_num"]
+#         assert opt["hidden_layer_num"] >= 1
+
+#         # save data vectors as an nn.Embedding format
+#         self.data_vectors = nn.Embedding(
+#             opt["data_vectors"].shape[0], opt["data_vectors"].shape[1]
+#         )
+#         self.data_vectors.weight.data = torch.from_numpy(
+#             opt["data_vectors"]).float()
+#         self.data_vectors.weight.requires_grad = False
+
+#         self.U_NN = self.build_NN(
+#             opt["data_vectors"],
+#             opt["hidden_layer_num"],
+#             opt["hidden_size"]
+#         )
+#         self.U = nn.Linear(
+#             opt["hidden_size"],
+#             opt["parameter_num"]
+#         )
+
+#     def initialization(self):
+
+#         for name, param in self.named_parameters():
+#             if 'data_vectors' in name:
+#                 continue
+#             if 'ips_weight' in name:
+#                 # init.uniform_(param, 0.0, 1.0/self.parameter_num) # **For
+#                 # simplicity**, the results of the paper came from this line.
+#                 # Recommended (since it shows better results for most cases).
+#                 init.uniform_(param, -0.5 / self.parameter_num,
+#                               0.5 / self.parameter_num)
+#                 continue
+#             if 'bias' in name:
+#                 init.constant_(param, 0.0)
+#             elif 'weight' in name:
+#                 init.kaiming_uniform_(
+#                     param, mode='fan_in', nonlinearity='relu')
+#             else:
+#                 raise Exception(name)
+
+#     def build_NN(self, given_data_vectors, hidden_layer_num, hidden_size):
+#         NN = [("fc0", nn.Linear(given_data_vectors.shape[1], hidden_size))]
+#         for i in range(1, hidden_layer_num):
+#             NN.extend([(f"relu{i-1}", nn.ReLU(True)), (f"fc{i}", nn.Linear(hidden_size, hidden_size))])
+#         NN.append((f"relu{hidden_layer_num-1}", nn.ReLU(True)))
+#         print(NN)
+#         return nn.Sequential(OrderedDict(NN))
+
+#     def forward(self, inputs):
+#         inputs = self.U_NN(self.data_vectors(inputs))
+#         e = self.U(inputs)
+#         o = e.narrow(1, 1, e.size(1) - 1)
+#         s = e.narrow(1, 0, 1).expand_as(o)
+#         dists = self.distfn([s, o]).squeeze(-1)
+#         return -dists
+
+#     def embed(self):
+#         embeddings = self.U(self.U_NN(self.data_vectors.state_dict()[
+#                             'weight'])).data.cpu().numpy()
+#         return [embeddings]
+
+#     def get_similarity(self, inputs):
+#         return self.forward(inputs)
+
+
+class Embedding_MDL(nn.Module):
 
     def __init__(self, opt):
-        super(Embedding, self).__init__()
+        super(Embedding_MDL, self).__init__()
+        # parameters
         self.model = opt["model_name"]
         self.total_node_num = opt["total_node_num"]
         self.train_node_num = opt["train_node_num"]
         self.parameter_num = opt["parameter_num"]
         assert opt["data_vectors"].shape[0] == opt["total_node_num"]
-        assert opt["hidden_layer_num"] >= 1
+        # print(opt["hidden_layer_num"])
+        assert opt["hidden_layer_num"] == 1
+
+        # save data vectors as an nn.Embedding format
         self.data_vectors = nn.Embedding(
-            opt["data_vectors"].shape[0], opt["data_vectors"].shape[1]
+            opt["data_vectors"].shape[0],
+            opt["data_vectors"].shape[1]
         )
-        self.data_vectors.weight.data = torch.from_numpy(opt["data_vectors"]).float()
+        self.data_vectors.weight.data = torch.from_numpy(
+            opt["data_vectors"]
+        ).float()
         self.data_vectors.weight.requires_grad = False
-        self.U_NN = self.build_NN(opt["data_vectors"],opt["hidden_layer_num"],opt["hidden_size"])
-        self.U = nn.Linear(opt["hidden_size"], opt["parameter_num"])
+
+        self.U_NN = self.build_NN(
+            opt["data_vectors"],
+            opt["hidden_layer_num"],
+            opt["hidden_size"]
+        )
+        # self.U = nn.Linear(
+        #     opt["hidden_size"],
+        #     opt["parameter_num"]
+        # )
+        self.U = nn.Linear(
+            opt["hidden_size"],
+            opt["parameter_num"],
+            bias=False
+        )
 
     def initialization(self):
 
@@ -29,13 +124,126 @@ class Embedding(nn.Module):
             if 'data_vectors' in name:
                 continue
             if 'ips_weight' in name:
-                # init.uniform_(param, 0.0, 1.0/self.parameter_num) # **For simplicity**, the results of the paper came from this line.
-                init.uniform_(param, -0.5/self.parameter_num, 0.5/self.parameter_num) # Recommended (since it shows better results for most cases).
+                # init.uniform_(param, 0.0, 1.0/self.parameter_num)
+                # **For simplicity**, the results of the paper came from this line.
+
+                # Recommended (since it shows better results for most cases).
+                init.uniform_(param, -0.5 / self.parameter_num,
+                              0.5 / self.parameter_num)
                 continue
             if 'bias' in name:
                 init.constant_(param, 0.0)
             elif 'weight' in name:
-                init.kaiming_uniform_(param, mode='fan_in', nonlinearity='relu')
+                # init.kaiming_uniform_(
+                #     param, mode='fan_in', nonlinearity='relu')
+                # init.uniform_(
+                #     param, a=-1, b=1)
+                init.xavier_uniform_(param, gain=4)
+            else:
+                raise Exception(name)
+
+    def build_NN(self, given_data_vectors, hidden_layer_num, hidden_size):
+        # NN = [("fc0", nn.Linear(given_data_vectors.shape[1], hidden_size))]
+        NN = [("fc0", nn.Linear(given_data_vectors.shape[1], hidden_size, bias=False))]
+        # for i in range(1, hidden_layer_num):
+        #     NN.extend([(f"relu{i-1}", nn.ReLU(True)), (f"fc{i}", nn.Linear(hidden_size, hidden_size))])
+        # NN.append((f"relu{hidden_layer_num-1}", nn.ReLU(True)))
+        NN.append((f"tanh{hidden_layer_num-1}", nn.Tanh()))
+        # NN.append((f"tanh{hidden_layer_num-1}", nn.ReLU()))
+
+        # print(NN)
+        return nn.Sequential(OrderedDict(NN))
+
+    def forward(self, inputs):
+        inputs = self.U_NN(self.data_vectors(inputs))
+        e = self.U(inputs)
+        # o: the coordinates of neighbor nodes.
+        o = e.narrow(1, 1, e.size(1) - 1)
+        # s: the coordinates of the center node. They are expanded to have the
+        # same shape as o.
+        s = e.narrow(1, 0, 1).expand_as(o)
+        dists = self.distfn([s, o]).squeeze(-1)
+        return -dists
+
+    def embed(self):
+        embeddings = self.U(self.U_NN(self.data_vectors.state_dict()[
+                            'weight'])).data.cpu().numpy()
+        return [embeddings]
+
+    def get_similarity(self, inputs):
+        return self.forward(inputs)
+
+
+class MDL_WIPS(Embedding_MDL):
+    """ Weighted Inner Product Similarity (WIPS)"""
+
+    def __init__(self, opt):
+        super(MDL_WIPS, self).__init__(opt)
+        # self.ips_weight = nn.Parameter(torch.zeros(opt["parameter_num"])).to("cuda:0")
+        self.ips_weight = nn.Parameter(torch.zeros(opt["parameter_num"]))
+        self.initialization()
+
+    def distfn(self, input, w=None):
+        u, v = input
+        if w is None:
+            w = self.ips_weight
+        # print(u)
+        # print(v)
+        # print(w)
+        return -torch.sum(u * v * w, dim=-1)
+
+    def get_ips_weight(self):
+        return self.ips_weight.data.cpu().numpy()
+
+
+class Embedding(nn.Module):
+
+    def __init__(self, opt):
+        super(Embedding, self).__init__()
+        # parameters
+        self.model = opt["model_name"]
+        self.total_node_num = opt["total_node_num"]
+        self.train_node_num = opt["train_node_num"]
+        self.parameter_num = opt["parameter_num"]
+        assert opt["data_vectors"].shape[0] == opt["total_node_num"]
+        assert opt["hidden_layer_num"] >= 1
+
+        # save data vectors as an nn.Embedding format
+        self.data_vectors = nn.Embedding(
+            opt["data_vectors"].shape[0], opt["data_vectors"].shape[1]
+        )
+        self.data_vectors.weight.data = torch.from_numpy(
+            opt["data_vectors"]).float()
+        self.data_vectors.weight.requires_grad = False
+
+        self.U_NN = self.build_NN(
+            opt["data_vectors"],
+            opt["hidden_layer_num"],
+            opt["hidden_size"]
+        )
+        self.U = nn.Linear(
+            opt["hidden_size"],
+            opt["parameter_num"]
+        )
+
+    def initialization(self):
+
+        for name, param in self.named_parameters():
+            if 'data_vectors' in name:
+                continue
+            if 'ips_weight' in name:
+                # init.uniform_(param, 0.0, 1.0/self.parameter_num) # **For
+                # simplicity**, the results of the paper came from this line.
+
+                # Recommended (since it shows better results for most cases).
+                init.uniform_(param, -0.5 / self.parameter_num,
+                              0.5 / self.parameter_num)
+                continue
+            if 'bias' in name:
+                init.constant_(param, 0.0)
+            elif 'weight' in name:
+                init.kaiming_uniform_(
+                    param, mode='fan_in', nonlinearity='relu')
             else:
                 raise Exception(name)
 
@@ -44,18 +252,23 @@ class Embedding(nn.Module):
         for i in range(1, hidden_layer_num):
             NN.extend([(f"relu{i-1}", nn.ReLU(True)), (f"fc{i}", nn.Linear(hidden_size, hidden_size))])
         NN.append((f"relu{hidden_layer_num-1}", nn.ReLU(True)))
+        # print(NN)
         return nn.Sequential(OrderedDict(NN))
 
     def forward(self, inputs):
         inputs = self.U_NN(self.data_vectors(inputs))
         e = self.U(inputs)
+        # o: the coordinates of neighbor nodes.
         o = e.narrow(1, 1, e.size(1) - 1)
+        # s: the coordinates of the center node. They are expanded to have the
+        # same shape as o.
         s = e.narrow(1, 0, 1).expand_as(o)
         dists = self.distfn([s, o]).squeeze(-1)
         return -dists
 
     def embed(self):
-        embeddings = self.U(self.U_NN(self.data_vectors.state_dict()['weight'])).data.cpu().numpy()
+        embeddings = self.U(self.U_NN(self.data_vectors.state_dict()[
+                            'weight'])).data.cpu().numpy()
         return [embeddings]
 
     def get_similarity(self, inputs):
@@ -72,7 +285,8 @@ class WIPS(Embedding):
 
     def distfn(self, input, w=None):
         u, v = input
-        if w is None: w=self.ips_weight
+        if w is None:
+            w = self.ips_weight
         return -torch.sum(u * v * w, dim=-1)
 
     def get_ips_weight(self):
@@ -98,13 +312,13 @@ class SIPS(Embedding):
         super(SIPS, self).__init__(opt)
         self.U = nn.Embedding(
             opt["train_node_num"],
-            opt["parameter_num"]-1,
+            opt["parameter_num"] - 1,
         )
         self.U_bias = nn.Embedding(
             opt["train_node_num"],
             1
         )
-        self.U = nn.Linear(opt["hidden_size"], opt["parameter_num"]-1)
+        self.U = nn.Linear(opt["hidden_size"], opt["parameter_num"] - 1)
         self.U_bias = nn.Linear(opt["hidden_size"], 1)
         self.initialization()
 
@@ -136,14 +350,15 @@ class IPDS(Embedding):
         if opt["data_vectors"] is None:
             self.U = nn.Embedding(
                 opt["train_node_num"],
-                opt["parameter_num"]-opt["neg_dim"]
+                opt["parameter_num"] - opt["neg_dim"]
             )
             self.U_neg = nn.Embedding(
                 opt["train_node_num"],
                 opt["neg_dim"]
             )
         else:
-            self.U = nn.Linear(opt["hidden_size"], opt["parameter_num"]-opt["neg_dim"])
+            self.U = nn.Linear(opt["hidden_size"], opt[
+                               "parameter_num"] - opt["neg_dim"])
             self.U_neg = nn.Linear(opt["hidden_size"], opt["neg_dim"])
         self.initialization()
 
@@ -196,9 +411,9 @@ class NPD(Embedding):
         n = torch.norm(e, p=2, dim=2)
         mask = (n >= 1.0)
         f = n * mask.type(n.type())
-        f[f!=0] /= (1.0-eps)
-        f[f==0] = 1.0
-        e = e.clone()/f.unsqueeze(2)
+        f[f != 0] /= (1.0 - eps)
+        f[f == 0] = 1.0
+        e = e.clone() / f.unsqueeze(2)
         o = e.narrow(1, 1, e.size(1) - 1)
         s = e.narrow(1, 0, 1).expand_as(o)
         dists = self.distfn([s, o]).squeeze(-1)
@@ -209,9 +424,9 @@ class NPD(Embedding):
         n = torch.norm(e, p=2, dim=1)
         mask = (n >= 1.0)
         f = n * mask.type(n.type())
-        f[f!=0] /= (1.0-eps)
-        f[f==0] = 1.0
-        e = e.clone()/f.unsqueeze(1)
+        f[f != 0] /= (1.0 - eps)
+        f[f == 0] = 1.0
+        e = e.clone() / f.unsqueeze(1)
         return [e.data.cpu().numpy()]
 
 
@@ -226,7 +441,8 @@ class PDF(Function):
         alpha = (1 - sqnormx)
         beta = (1 - sqnormv)
         z = 1 + 2 * sqdist / (alpha * beta)
-        a = ((sqnormv - 2 * torch.sum(x * v, dim=-1) + 1) / torch.pow(alpha, 2)).unsqueeze(-1).expand_as(x)
+        a = ((sqnormv - 2 * torch.sum(x * v, dim=-1) + 1) /
+             torch.pow(alpha, 2)).unsqueeze(-1).expand_as(x)
         a = a * x - v / alpha.unsqueeze(-1).expand_as(v)
         z = torch.sqrt(torch.pow(z, 2) - 1)
         z = torch.clamp(z * beta, min=self.eps).unsqueeze(-1)
