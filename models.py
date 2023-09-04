@@ -4,81 +4,6 @@ import torch.nn.init as init
 from torch import nn
 from torch.autograd import Function
 
-# class MDL_WIPS(nn.Module):
-
-#     def __init__(self, opt):
-#         super(MDL_WIPS, self).__init__()
-#         # print(opt)
-#         # parameters
-#         self.model = opt["model_name"]
-#         self.total_node_num = opt["total_node_num"]
-#         self.train_node_num = opt["train_node_num"]
-#         self.parameter_num = opt["parameter_num"]
-#         assert opt["data_vectors"].shape[0] == opt["total_node_num"]
-#         assert opt["hidden_layer_num"] >= 1
-
-#         # save data vectors as an nn.Embedding format
-#         self.data_vectors = nn.Embedding(
-#             opt["data_vectors"].shape[0], opt["data_vectors"].shape[1]
-#         )
-#         self.data_vectors.weight.data = torch.from_numpy(
-#             opt["data_vectors"]).float()
-#         self.data_vectors.weight.requires_grad = False
-
-#         self.U_NN = self.build_NN(
-#             opt["data_vectors"],
-#             opt["hidden_layer_num"],
-#             opt["hidden_size"]
-#         )
-#         self.U = nn.Linear(
-#             opt["hidden_size"],
-#             opt["parameter_num"]
-#         )
-
-#     def initialization(self):
-
-#         for name, param in self.named_parameters():
-#             if 'data_vectors' in name:
-#                 continue
-#             if 'ips_weight' in name:
-#                 # init.uniform_(param, 0.0, 1.0/self.parameter_num) # **For
-#                 # simplicity**, the results of the paper came from this line.
-#                 # Recommended (since it shows better results for most cases).
-#                 init.uniform_(param, -0.5 / self.parameter_num,
-#                               0.5 / self.parameter_num)
-#                 continue
-#             if 'bias' in name:
-#                 init.constant_(param, 0.0)
-#             elif 'weight' in name:
-#                 init.kaiming_uniform_(
-#                     param, mode='fan_in', nonlinearity='relu')
-#             else:
-#                 raise Exception(name)
-
-#     def build_NN(self, given_data_vectors, hidden_layer_num, hidden_size):
-#         NN = [("fc0", nn.Linear(given_data_vectors.shape[1], hidden_size))]
-#         for i in range(1, hidden_layer_num):
-#             NN.extend([(f"relu{i-1}", nn.ReLU(True)), (f"fc{i}", nn.Linear(hidden_size, hidden_size))])
-#         NN.append((f"relu{hidden_layer_num-1}", nn.ReLU(True)))
-#         print(NN)
-#         return nn.Sequential(OrderedDict(NN))
-
-#     def forward(self, inputs):
-#         inputs = self.U_NN(self.data_vectors(inputs))
-#         e = self.U(inputs)
-#         o = e.narrow(1, 1, e.size(1) - 1)
-#         s = e.narrow(1, 0, 1).expand_as(o)
-#         dists = self.distfn([s, o]).squeeze(-1)
-#         return -dists
-
-#     def embed(self):
-#         embeddings = self.U(self.U_NN(self.data_vectors.state_dict()[
-#                             'weight'])).data.cpu().numpy()
-#         return [embeddings]
-
-#     def get_similarity(self, inputs):
-#         return self.forward(inputs)
-
 
 class Embedding_MDL(nn.Module):
 
@@ -90,7 +15,6 @@ class Embedding_MDL(nn.Module):
         self.train_node_num = opt["train_node_num"]
         self.parameter_num = opt["parameter_num"]
         assert opt["data_vectors"].shape[0] == opt["total_node_num"]
-        # print(opt["hidden_layer_num"])
         assert opt["hidden_layer_num"] == 1
 
         # save data vectors as an nn.Embedding format
@@ -108,10 +32,7 @@ class Embedding_MDL(nn.Module):
             opt["hidden_layer_num"],
             opt["hidden_size"]
         )
-        # self.U = nn.Linear(
-        #     opt["hidden_size"],
-        #     opt["parameter_num"]
-        # )
+        # no bias for MDL-WIPS
         self.U = nn.Linear(
             opt["hidden_size"],
             opt["parameter_num"],
@@ -179,7 +100,6 @@ class MDL_WIPS(Embedding_MDL):
 
     def __init__(self, opt):
         super(MDL_WIPS, self).__init__(opt)
-        # self.ips_weight = nn.Parameter(torch.zeros(opt["parameter_num"])).to("cuda:0")
         self.ips_weight = nn.Parameter(torch.zeros(opt["parameter_num"]))
         self.initialization()
 
@@ -187,9 +107,6 @@ class MDL_WIPS(Embedding_MDL):
         u, v = input
         if w is None:
             w = self.ips_weight
-        # print(u)
-        # print(v)
-        # print(w)
         return -torch.sum(u * v * w, dim=-1)
 
     def get_ips_weight(self):

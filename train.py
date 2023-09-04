@@ -27,7 +27,7 @@ class ProxSGD(optim.Optimizer):
         n_dim_e,
         n_dim_m,
         n_dim_d,
-        device
+        # device
     ):
         defaults = {
             "lr": lr,
@@ -39,8 +39,8 @@ class ProxSGD(optim.Optimizer):
             "n_dim_e": n_dim_e,
             "n_dim_m": n_dim_m,
             "n_dim_d": n_dim_d,
-            "alpha": torch.tensor(np.ones(n_dim_e) * 0.001),
-            "device": device
+            "alpha": torch.tensor(np.ones(n_dim_e) * 0.001)
+            # "device": device
         }
         super().__init__(params, defaults=defaults)
 
@@ -53,13 +53,15 @@ class ProxSGD(optim.Optimizer):
         param_A = group["params"][2]
         A_tilde = torch.cat(
             (param_l.reshape((-1, 1)), param_A), dim=1)
-        # print(group["alpha"])
+
+        # first order approximation
         for i in range(group["n_dim_e"]):
-            print(torch.norm(A_tilde[i, :]))
+            # print(torch.norm(A_tilde[i, :]))
             group["alpha"][i] = 4 * (group["n_dim_m"] + 1) / (4 * torch.norm(A_tilde[i, :]) + 2) + \
                 torch.exp(- group["log_h_prime"] + 2 * np.log(
                     (group["n_dim_m"] + 1)) - 2 * torch.log(4 * torch.norm(A_tilde[i, :]) + 2))
-        print(group["alpha"])
+
+        # print(group["alpha"])
 
     def step(
         self
@@ -148,9 +150,8 @@ class ProxSGD(optim.Optimizer):
         param_B.data.copy_(param_B_update)
         param_A.data.copy_(param_A_update)
 
-
-def trainer(model, dataset, lossfn, optimizer, opt, log, cuda):
-    print(dataset)
+def trainer_for_ablation(model, dataset, lossfn, optimizer, opt, log, cuda):
+    # print(dataset)
 
     # dataloader
     loader = DataLoader(
@@ -180,10 +181,129 @@ def trainer(model, dataset, lossfn, optimizer, opt, log, cuda):
         for inputs, targets in loader:
             pbar.update(1)
 
-            # inputとtargetが何を表しているかわからない
-            # link predictionかreconstructionかでも異なる気はする
-            # print(inputs)
-            # print(targets)
+            # if cuda:
+            inputs = inputs.cuda(cuda)
+            targets = targets.cuda(cuda)
+
+            # update parameters until reaching to the predefined number of
+            # iterations
+            optimizer.zero_grad()
+            preds = model(inputs)
+            loss = lossfn(preds, targets)
+            loss.backward()
+            optimizer.step()
+            train_loss.append(loss.item())
+            iter_counter += 1
+            # optimize alpha for every x iteration
+            if iter_counter % 10000 == 0:
+                optimizer.optimize_alpha()
+
+            # evaluate validation and test for each "eval_each" iterations.
+            if iter_counter % opt["eval_each"] == 0:
+
+                pbar.close()
+                model.eval()
+                # ROCAUC_train, ROCAUC_valid, ROCAUC_test, eval_elapsed = evaluation(
+                #     model, dataset.neighbor_train, dataset.neighbor_valid, dataset.neighbor_test, dataset.task, log, opt["neproc"], cuda, True)
+                ROCAUC_train, ROCAUC_valid, ROCAUC_test, eval_elapsed = evaluation(
+                    model, dataset.neighbor_train, dataset.neighbor_valid, dataset.neighbor_test, dataset.task, log, opt["neproc"], True, True)
+                model.train()
+
+                # update maximum performance
+                if ROCAUC_valid > max_ROCAUC[0]:
+                    max_ROCAUC = (ROCAUC_valid, iter_counter)
+                    max_ROCAUC_model = model.state_dict()
+                    embeds = model.embed()
+                    max_ROCAUC_model_embed = embeds
+                    max_ROCAUC_model_on_test = ROCAUC_test
+
+                log.info(
+                    ('[%s] Eval: {'
+                     '"iter": %d, '
+                     '"loss": %.6f, '
+                     '"elapsed (for %d iter.)": %.2f, '
+                     '"elapsed (for eval.)": %.2f, '
+                     '"rocauc_train": %.6f, '
+                     '"rocauc_valid": %.6f, '
+                     '"rocauc_test": %.6f, '
+                     '"best_rocauc_valid": %.6f, '
+                     '"best_rocauc_valid_iter": %d, '
+                     '"best_rocauc_valid_test": %.6f, '
+                     '}') % (
+                         opt["exp_name"], iter_counter, np.mean(
+                             train_loss), opt["eval_each"], timeit.default_timer() - t_start, eval_elapsed,
+                         ROCAUC_train, ROCAUC_valid, ROCAUC_test, max_ROCAUC[
+                             0],  max_ROCAUC[1], max_ROCAUC_model_on_test,
+                    )
+                )
+
+                # no early stopping
+                former_loss = np.mean(train_loss)
+                train_loss = []
+                t_start = timeit.default_timer()
+                if iter_counter < opt["iter"]:
+                    pbar = tqdm(total=opt["eval_each"])
+
+            if iter_counter >= opt["iter"]:
+                log.info(
+                    ('[%s] RESULT: {'
+                     '"best_rocauc_valid": %.6f, '
+                     '"best_rocauc_valid_test": %.6f, '
+                     '}') % (
+                        opt["exp_name"],
+                        max_ROCAUC[0], max_ROCAUC_model_on_test,
+                    )
+                )
+
+                print(""" save the model """)
+                embeds = model.embed()
+
+                torch.save({
+                    'model': model.state_dict(),
+                    'node2id': dataset.node2id,
+                    'data_vectors': dataset.data_vectors,
+                    'embeds_at_final_iteration': embeds,
+                    'best_rocauc_model': max_ROCAUC_model,
+                    'best_rocauc_valid': max_ROCAUC[0],
+                    'best_rocauc_valid_embeds': max_ROCAUC_model_embed,
+                    'best_rocauc_valid_test': max_ROCAUC_model_on_test,
+                    'best_rocauc_valid_iteration': max_ROCAUC[1],
+                    'total_iteration': iter_counter,
+                }, f'{opt["save_dir"]}/{opt["exp_name"]}.pth')
+                sys.exit()
+
+
+def trainer(model, dataset, lossfn, optimizer, opt, log, cuda):
+    # print(dataset)
+
+    # dataloader
+    loader = DataLoader(
+        dataset,
+        batch_size=opt["batchsize"],
+        collate_fn=dataset.collate,
+        sampler=dataset.sampler
+    )
+
+    # (maximum ROCAUC, the iteratioin at which the maximum one was achieved)
+    max_ROCAUC = (-1, -1)
+    max_ROCAUC_model = None
+    max_ROCAUC_model_on_test = None
+
+    iter_counter = 0
+    former_loss = np.Inf
+
+    t_start = timeit.default_timer()
+
+    assert opt["iter"] % opt["eval_each"] == 0
+    pbar = tqdm(total=opt["eval_each"])
+
+    while True:
+        train_loss = []
+        loss = None
+
+        for inputs, targets in loader:
+            pbar.update(1)
+
             if cuda:
                 inputs = inputs.cuda()
                 targets = targets.cuda()
