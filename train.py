@@ -11,6 +11,7 @@ from sklearn.metrics import roc_auc_score
 from torch.autograd import Variable
 from torch.utils.data import DataLoader
 from torch import optim
+from copy import deepcopy
 
 
 class ProxSGD(optim.Optimizer):
@@ -27,7 +28,6 @@ class ProxSGD(optim.Optimizer):
         n_dim_e,
         n_dim_m,
         n_dim_d,
-        # device
     ):
         defaults = {
             "lr": lr,
@@ -40,7 +40,6 @@ class ProxSGD(optim.Optimizer):
             "n_dim_m": n_dim_m,
             "n_dim_d": n_dim_d,
             "alpha": torch.tensor(np.ones(n_dim_e) * 0.001)
-            # "device": device
         }
         super().__init__(params, defaults=defaults)
 
@@ -49,7 +48,6 @@ class ProxSGD(optim.Optimizer):
     ):
         group = self.param_groups[0]
         param_l = group["params"][0]
-        # param_B = group["params"][1]
         param_A = group["params"][2]
         A_tilde = torch.cat(
             (param_l.reshape((-1, 1)), param_A), dim=1)
@@ -63,6 +61,23 @@ class ProxSGD(optim.Optimizer):
 
         # print(group["alpha"])
 
+    def upper_bound_on_PC():
+        group = self.param_groups[0]
+
+        ret = 0
+        ret += 0.5 * torch.sum(group["alpha"])
+        ret -= (group["n_dim_m"] + 1) * \
+            torch.sum(torch.log(group["alpha"] + 0.00001))
+
+        param_l = group["params"][0]
+        param_A = group["params"][2]
+        A_tilde = torch.cat(
+            (param_l.reshape((-1, 1)), param_A), dim=1)
+
+        ret += torch.sum(group["alpha"] * torch.norm(A_tilde, dim=1))
+
+        return ret
+
     def step(
         self
     ):
@@ -71,7 +86,8 @@ class ProxSGD(optim.Optimizer):
         param_B = group["params"][1]
         param_A = group["params"][2]
 
-        def normalized_grad(grad, threshold):  # normalize grad not to diverge the parameters
+        # normalize grad not to diverge the parameters
+        def normalized_grad(grad, threshold):
             grad_norm = torch.norm(grad)
             grad_norm = torch.where(
                 grad_norm > threshold, grad_norm, torch.tensor(threshold, device=grad.device))
@@ -93,8 +109,6 @@ class ProxSGD(optim.Optimizer):
         A_tilde = torch.cat(
             (param_l_update.reshape((-1, 1)), param_A_update), dim=1)
         for i in range(group["n_dim_e"]):
-            # old one
-            # threshold = group["lr"] * group["alpha"][i]
             # new update rule
             threshold = group["lr"] * 2 * group["alpha"][i] / \
                 (group["n_nodes"] * (group["n_nodes"] - 1))
@@ -150,9 +164,17 @@ class ProxSGD(optim.Optimizer):
         param_B.data.copy_(param_B_update)
         param_A.data.copy_(param_A_update)
 
-def trainer_for_ablation(model, dataset, lossfn, optimizer, opt, log, cuda):
-    # print(dataset)
 
+def trainer_for_ablation(
+    model,
+    dataset,
+    lossfn,
+    optimizer,
+    opt,
+    log,
+    cuda,
+    required_sparsity=0.1
+):
     # dataloader
     loader = DataLoader(
         dataset,
@@ -164,7 +186,8 @@ def trainer_for_ablation(model, dataset, lossfn, optimizer, opt, log, cuda):
     # (maximum ROCAUC, the iteratioin at which the maximum one was achieved)
     max_ROCAUC = (-1, -1)
     max_ROCAUC_model = None
-    max_ROCAUC_model_on_test = None
+    max_ROCAUC_model_on_test = -1
+    max_ROCAUC_model_embed = None
 
     iter_counter = 0
     former_loss = np.Inf
@@ -204,15 +227,36 @@ def trainer_for_ablation(model, dataset, lossfn, optimizer, opt, log, cuda):
                 pbar.close()
                 model.eval()
                 # ROCAUC_train, ROCAUC_valid, ROCAUC_test, eval_elapsed = evaluation(
-                #     model, dataset.neighbor_train, dataset.neighbor_valid, dataset.neighbor_test, dataset.task, log, opt["neproc"], cuda, True)
+                # model, dataset.neighbor_train, dataset.neighbor_valid,
+                # dataset.neighbor_test, dataset.task, log, opt["neproc"],
+                # cuda, True)
                 ROCAUC_train, ROCAUC_valid, ROCAUC_test, eval_elapsed = evaluation(
-                    model, dataset.neighbor_train, dataset.neighbor_valid, dataset.neighbor_test, dataset.task, log, opt["neproc"], True, True)
+                    model,
+                    dataset.neighbor_train,
+                    dataset.neighbor_valid,
+                    dataset.neighbor_test,
+                    dataset.task,
+                    log,
+                    opt["neproc"],
+                    True,
+                    True
+                )
                 model.train()
 
                 # update maximum performance
-                if ROCAUC_valid > max_ROCAUC[0]:
+                # if ROCAUC_valid > max_ROCAUC[0]:
+                #     max_ROCAUC = (ROCAUC_valid, iter_counter)
+                #     max_ROCAUC_model = model.state_dict()
+                #     embeds = model.embed()
+                #     max_ROCAUC_model_embed = embeds
+                #     max_ROCAUC_model_on_test = ROCAUC_test
+
+                ips_weight = model.get_ips_weight()
+                sparsity = np.sum(ips_weight == 0) / len(ips_weight)
+
+                if sparsity > required_sparsity and ROCAUC_valid > max_ROCAUC[0]:
                     max_ROCAUC = (ROCAUC_valid, iter_counter)
-                    max_ROCAUC_model = model.state_dict()
+                    max_ROCAUC_model = deepcopy(model.state_dict())
                     embeds = model.embed()
                     max_ROCAUC_model_embed = embeds
                     max_ROCAUC_model_on_test = ROCAUC_test
@@ -230,10 +274,18 @@ def trainer_for_ablation(model, dataset, lossfn, optimizer, opt, log, cuda):
                      '"best_rocauc_valid_iter": %d, '
                      '"best_rocauc_valid_test": %.6f, '
                      '}') % (
-                         opt["exp_name"], iter_counter, np.mean(
-                             train_loss), opt["eval_each"], timeit.default_timer() - t_start, eval_elapsed,
-                         ROCAUC_train, ROCAUC_valid, ROCAUC_test, max_ROCAUC[
-                             0],  max_ROCAUC[1], max_ROCAUC_model_on_test,
+                         opt["exp_name"],
+                         iter_counter,
+                         np.mean(train_loss),
+                         opt["eval_each"],
+                         timeit.default_timer() - t_start,
+                         eval_elapsed,
+                         ROCAUC_train,
+                         ROCAUC_valid,
+                         ROCAUC_test,
+                         max_ROCAUC[0],
+                         max_ROCAUC[1],
+                         max_ROCAUC_model_on_test,
                     )
                 )
 
@@ -251,7 +303,8 @@ def trainer_for_ablation(model, dataset, lossfn, optimizer, opt, log, cuda):
                      '"best_rocauc_valid_test": %.6f, '
                      '}') % (
                         opt["exp_name"],
-                        max_ROCAUC[0], max_ROCAUC_model_on_test,
+                        max_ROCAUC[0],
+                        max_ROCAUC_model_on_test,
                     )
                 )
 
@@ -269,11 +322,20 @@ def trainer_for_ablation(model, dataset, lossfn, optimizer, opt, log, cuda):
                     'best_rocauc_valid_test': max_ROCAUC_model_on_test,
                     'best_rocauc_valid_iteration': max_ROCAUC[1],
                     'total_iteration': iter_counter,
+                    'opt': opt
                 }, f'{opt["save_dir"]}/{opt["exp_name"]}.pth')
                 sys.exit()
 
 
-def trainer(model, dataset, lossfn, optimizer, opt, log, cuda):
+def trainer(
+    model,
+    dataset,
+    lossfn,
+    optimizer,
+    opt,
+    log,
+    cuda
+):
     # print(dataset)
 
     # dataloader
@@ -333,7 +395,7 @@ def trainer(model, dataset, lossfn, optimizer, opt, log, cuda):
                 # update maximum performance
                 if ROCAUC_valid > max_ROCAUC[0]:
                     max_ROCAUC = (ROCAUC_valid, iter_counter)
-                    max_ROCAUC_model = model.state_dict()
+                    max_ROCAUC_model = deepcopy(model.state_dict())
                     embeds = model.embed()
                     max_ROCAUC_model_embed = embeds
                     max_ROCAUC_model_on_test = ROCAUC_test
@@ -394,7 +456,17 @@ def trainer(model, dataset, lossfn, optimizer, opt, log, cuda):
                 sys.exit()
 
 
-def evaluation(model, neighbor_train, neighbor_valid, neighbor_test, task, log, neproc, cuda=False, verbose=False):
+def evaluation(
+    model,
+    neighbor_train,
+    neighbor_valid,
+    neighbor_test,
+    task,
+    log,
+    neproc,
+    cuda=False,
+    verbose=False
+):
     t_start = timeit.default_timer()
 
     ips_weight = None

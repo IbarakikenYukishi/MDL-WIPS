@@ -28,14 +28,22 @@ def main():
     parser.add_argument(
         '-neproc', help='Number of eval processes', type=int, default=32)
     # parser.add_argument('-seed', help='Random seed', type=int, required=False)
-    parser.add_argument('-seed', help='Random seed', type=int, default=1, required=False)
+    parser.add_argument('-seed', help='Random seed',
+                        type=int, default=1, required=False)
 
     parser.add_argument('-dblp_path', help='dblp_path',
                         type=str, required=False)
     parser.add_argument('-webkb_path', help='webkb_path',
                         type=str, required=False)
+    # parser.add_argument(
+    #     '-word2vec_path', help='word2vec_path', type=str, required=False)
     parser.add_argument(
-        '-word2vec_path', help='word2vec_path', type=str, required=False)
+        '-word2vec_path',
+        help='word2vec_path',
+        type=str,
+        default="data/word2vec/GoogleNews-vectors-negative300.bin",
+        required=False
+    )
 
     # parser.add_argument(
     #     '-iter', help='Number of iterations', type=int, default=10)
@@ -101,7 +109,8 @@ def main():
     torch.manual_seed(opt.seed)
 
     torch.set_default_tensor_type('torch.FloatTensor')
-    opt.exp_name += "@" + str(datetime.datetime.now()).replace(" ", "_")
+    # enable the line below if you want to add the date to the output file
+    # opt.exp_name += "@" + str(datetime.datetime.now()).replace(" ", "_")
     if opt.debug:
         log_level = logging.DEBUG
     else:
@@ -199,7 +208,7 @@ def main():
 
     # train the model
     train.trainer_for_ablation(model, dataset, lossfn, optimizer,
-                  opt.__dict__, log, opt.cuda)
+                               opt.__dict__, log, opt.cuda)
 
 
 def lossfn(preds, target):

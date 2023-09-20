@@ -58,8 +58,10 @@ class EdgeSampler(Sampler):
 class GraphDataset(Dataset):
     ntries = 10
     smoothing_rate_for_edge = 1.0
-    node_table_size = int(1e7)
-    edge_table_size = int(5e7)
+    # node_table_size = int(1e7)
+    # edge_table_size = int(5e7)
+    node_table_size = int(1e5)
+    edge_table_size = int(5e5)
 
     def __init__(self, node2id, id2freq, edges2freq, nnegs, smoothing_rate_for_node, data_vectors=None, task="reconst", seed=0):
         assert task in ["reconst", "linkpred"]
@@ -237,7 +239,8 @@ def preprocess_hierarchy(word2vec_path, use_rich_information=False, verbose=True
             return word
 
     word2vec = KeyedVectors.load_word2vec_format(word2vec_path, binary=True)
-    word2vec_vocab = set(word2vec.vocab.keys())
+    # word2vec_vocab = set(word2vec.vocab.keys())
+    word2vec_vocab = set(list(word2vec.index_to_key))
     word2data_vector = dict()
     for word in word2vec_vocab:
         lowerword = word.lower()

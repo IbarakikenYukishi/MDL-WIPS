@@ -33,8 +33,15 @@ def main():
                         type=str, required=False)
     parser.add_argument('-webkb_path', help='webkb_path',
                         type=str, required=False)
+    # parser.add_argument(
+    #     '-word2vec_path', help='word2vec_path', type=str, required=False)
     parser.add_argument(
-        '-word2vec_path', help='word2vec_path', type=str, required=False)
+        '-word2vec_path',
+        help='word2vec_path',
+        type=str,
+        default="data/word2vec/GoogleNews-vectors-negative300.bin",
+        required=False
+    )
 
     # parser.add_argument(
     #     '-iter', help='Number of iterations', type=int, default=10)
@@ -195,7 +202,7 @@ def main():
         n_dim_e=opt.parameter_num,
         n_dim_m=opt.hidden_size,
         n_dim_d=opt.data_vectors.shape[1],
-        device="cuda:0"
+        # device="cuda:0"
     )
 
     # train the model
