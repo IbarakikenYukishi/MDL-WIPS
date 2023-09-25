@@ -28,6 +28,7 @@ class ProxSGD(optim.Optimizer):
         n_dim_e,
         n_dim_m,
         n_dim_d,
+        device
     ):
         defaults = {
             "lr": lr,
@@ -39,12 +40,13 @@ class ProxSGD(optim.Optimizer):
             "n_dim_e": n_dim_e,
             "n_dim_m": n_dim_m,
             "n_dim_d": n_dim_d,
-            "alpha": torch.tensor(np.ones(n_dim_e) * 0.001)
+            "alpha": torch.tensor(np.ones(n_dim_e) * 0.001).to(device)
         }
         super().__init__(params, defaults=defaults)
 
     def optimize_alpha(
-        self
+        self,
+        alpha_max=100000
     ):
         group = self.param_groups[0]
         param_l = group["params"][0]
@@ -55,17 +57,21 @@ class ProxSGD(optim.Optimizer):
         # first order approximation
         for i in range(group["n_dim_e"]):
             # print(torch.norm(A_tilde[i, :]))
-            group["alpha"][i] = 4 * (group["n_dim_m"] + 1) / (4 * torch.norm(A_tilde[i, :]) + 2) + \
-                torch.exp(- group["log_h_prime"] + 2 * np.log(
-                    (group["n_dim_m"] + 1)) - 2 * torch.log(4 * torch.norm(A_tilde[i, :]) + 2))
+            # group["alpha"][i] = 4 * (group["n_dim_m"] + 1) / (4 * torch.norm(A_tilde[i, :]) + 2) + \
+            #     torch.exp(- group["log_h_prime"] + 2 * np.log(
+            #         (group["n_dim_m"] + 1)) - 2 * torch.log(4 * torch.norm(A_tilde[i, :]) + 2))
+            group["alpha"][i] = min((group["n_dim_m"] + 1) /
+                                    (torch.norm(A_tilde[i, :]) + 0.0001), alpha_max)
 
         # print(group["alpha"])
 
-    def upper_bound_on_PC():
+    def upper_bound_on_PC(
+        self
+    ):
         group = self.param_groups[0]
 
         ret = 0
-        ret += 0.5 * torch.sum(group["alpha"])
+        # ret += 0.5 * torch.sum(group["alpha"])
         ret -= (group["n_dim_m"] + 1) * \
             torch.sum(torch.log(group["alpha"] + 0.00001))
 
@@ -74,7 +80,28 @@ class ProxSGD(optim.Optimizer):
         A_tilde = torch.cat(
             (param_l.reshape((-1, 1)), param_A), dim=1)
 
-        ret += torch.sum(group["alpha"] * torch.norm(A_tilde, dim=1))
+        # print(group["alpha"].device)
+        # print(A_tilde.device)
+
+        ret += torch.sum(group["alpha"] *
+                         torch.norm(A_tilde, dim=1)).cpu().item()
+
+        return ret
+
+    def regularization_term(
+        self
+    ):
+        group = self.param_groups[0]
+
+        ret = 0
+
+        param_l = group["params"][0]
+        param_A = group["params"][2]
+        A_tilde = torch.cat(
+            (param_l.reshape((-1, 1)), param_A), dim=1)
+
+        ret += torch.sum(group["alpha"] *
+                         torch.norm(A_tilde, dim=1)).cpu().item()
 
         return ret
 
@@ -183,7 +210,7 @@ def trainer_for_ablation(
         sampler=dataset.sampler
     )
 
-    # (maximum ROCAUC, the iteratioin at which the maximum one was achieved)
+    # (maximum ROCAUC, the iteration at which the maximum one was achieved)
     max_ROCAUC = (-1, -1)
     max_ROCAUC_model = None
     max_ROCAUC_model_on_test = -1
@@ -200,6 +227,8 @@ def trainer_for_ablation(
     while True:
         train_loss = []
         loss = None
+        uLNML_list = []
+        lik_list = []
 
         for inputs, targets in loader:
             pbar.update(1)
@@ -212,17 +241,30 @@ def trainer_for_ablation(
             # iterations
             optimizer.zero_grad()
             preds = model(inputs)
-            loss = lossfn(preds, targets)
+            pos_loss, neg_loss = lossfn(preds, targets)
+            loss = pos_loss + neg_loss
+
+            # loss = lossfn(preds, targets)
             loss.backward()
             optimizer.step()
             train_loss.append(loss.item())
             iter_counter += 1
             # optimize alpha for every x iteration
+            lik_list.append(
+                pos_loss.item() * opt["lik_pos_ratio"] + neg_loss.item() * opt["lik_neg_ratio"] + optimizer.regularization_term())
+            uLNML_list.append(pos_loss.item() * opt["lik_pos_ratio"] + neg_loss.item() *
+                              opt["lik_neg_ratio"] + optimizer.upper_bound_on_PC().item())
+            # uLNML.append(optimizer.upper_bound_on_PC().item())
+
             if iter_counter % 10000 == 0:
                 optimizer.optimize_alpha()
 
             # evaluate validation and test for each "eval_each" iterations.
             if iter_counter % opt["eval_each"] == 0:
+                # print(np.mean(lik_list))
+                # print(np.mean(uLNML_list))
+                uLNML_list = []
+                lik_list = []
 
                 pbar.close()
                 model.eval()
@@ -346,7 +388,7 @@ def trainer(
         sampler=dataset.sampler
     )
 
-    # (maximum ROCAUC, the iteratioin at which the maximum one was achieved)
+    # (maximum ROCAUC, the iteration at which the maximum one was achieved)
     max_ROCAUC = (-1, -1)
     max_ROCAUC_model = None
     max_ROCAUC_model_on_test = None

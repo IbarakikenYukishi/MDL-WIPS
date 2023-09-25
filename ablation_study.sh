@@ -13,7 +13,7 @@ batchsize=64
 # parameter_nums=(10 20 30 40 50 60 70 80 90 100 150 200 250 300)
 parameter_nums=(10 20 30 40 50 60 70 80 90)
 # parameter_nums=(100 150 200 250 300)
-hidden_size=2000
+hidden_size=1000
 device=0
 n_devices=4
 
@@ -22,7 +22,7 @@ do
     for parameter_num in "${parameter_nums[@]}"
     do
     	exp_name="${graph_type}_${parameter_num}_${init_lr}"
-        command="conda activate embed; python ablation_study.py -exp_name ${exp_name} -save_dir ${save_dir} -model_name MDL_WIPS -cuda ${device} -graph_type ${graph_type} -webkb_path ${webkb_path} -iter ${iter} -eval_each ${eval_each} -init_lr ${init_lr} -batchsize ${batchsize} -parameter_num ${parameter_num} -hidden_size ${hidden_size}"
+        command="conda activate embed; python ablation_study.py -task linkpred -exp_name ${exp_name} -save_dir ${save_dir} -model_name MDL_WIPS -cuda ${device} -graph_type ${graph_type} -webkb_path ${webkb_path} -iter ${iter} -eval_each ${eval_each} -init_lr ${init_lr} -batchsize ${batchsize} -parameter_num ${parameter_num} -hidden_size ${hidden_size}"
         echo "${command}"
         screen -dm bash -c "${command}"
         sleep 2

@@ -24,7 +24,7 @@ def main():
     parser.add_argument('-exp_name', help='Experiment name', type=str,
                         default=str(datetime.datetime.now()).replace(" ", "_"))
     parser.add_argument('-graph_type', help='Graph type: "webkb", "collab" or "hierarchy"',
-                        type=str, required=True, choices=["hierarchy", "collab", "webkb"])
+                        type=str, required=True, choices=["hierarchy", "collab", "webkb", "cora"])
     parser.add_argument(
         '-neproc', help='Number of eval processes', type=int, default=32)
     # parser.add_argument('-seed', help='Random seed', type=int, required=False)
@@ -34,6 +34,8 @@ def main():
     parser.add_argument('-dblp_path', help='dblp_path',
                         type=str, required=False)
     parser.add_argument('-webkb_path', help='webkb_path',
+                        type=str, required=False)
+    parser.add_argument('-cora_path', help='cora_path',
                         type=str, required=False)
     # parser.add_argument(
     #     '-word2vec_path', help='word2vec_path', type=str, required=False)
@@ -54,7 +56,7 @@ def main():
     parser.add_argument(
         '-init_lr', help='Initial learning rate', type=float, default=0.1)
     # parser.add_argument('-batchsize', help='Batchsize', type=int, default=2)
-    parser.add_argument('-batchsize', help='Batchsize', type=int, default=32)
+    parser.add_argument('-batchsize', help='Batchsize', type=int, default=64)
     parser.add_argument(
         '-negs', help='Number of negative samples', type=int, default=10)
 
@@ -70,7 +72,7 @@ def main():
                         help='Number of hidden layers', type=int, default=1)
 
     parser.add_argument(
-        '-hidden_size', help='Number of units in a hidden layer', type=int, default=2000)
+        '-hidden_size', help='Number of units in a hidden layer', type=int, default=1000)
     # parser.add_argument(
     #     '-hidden_size', help='Number of units in a hidden layer', type=int, default=100)
 
@@ -133,6 +135,10 @@ def main():
     elif opt.graph_type == "webkb":
         word2id, id2freq, edges2freq, vectors = data.preprocess_webkb_network(
             opt.webkb_path)
+    elif opt.graph_type == "cora":
+        word2id, id2freq, edges2freq, vectors = data.preprocess_cora(
+            opt.cora_path)
+
     vectors = np.concatenate((vectors, np.ones((vectors.shape[0], 1))), axis=1)
     # print(vectors.shape)
 
@@ -143,12 +149,12 @@ def main():
     # print(id2freq)
 
     # edgeのペアのfrequency?
-    # print(edges2freq)
+    print(edges2freq)
 
     # vectors: GraphDatasetに使う。reconstの場合はdata vectorになり、link
     # predictionの場合は何らかの処理を加え、data vectorの元になる。
     # print(vectors.shape)
-    # print(vectors)
+    # print(vectors.shape)
 
     dataset = data.GraphDataset(word2id, id2freq, edges2freq, opt.negs,
                                 opt.smoothing_rate_for_node, vectors, opt.task, opt.seed)
@@ -156,6 +162,13 @@ def main():
     opt.data_vectors = dataset.data_vectors
     opt.total_node_num = dataset.total_node_num
     opt.train_node_num = dataset.train_node_num
+
+    opt.lik_pos_ratio = len(edges2freq) / opt.batchsize
+    opt.lik_neg_ratio = (
+        opt.train_node_num * (opt.train_node_num - 1)/2 - len(edges2freq)) / (opt.batchsize*opt.negs)
+
+    # print(opt.lik_neg_ratio)
+    # print(opt.lik_pos_ratio)
 
     # IPDSの場合neg_ratioからneg_dimを計算する
     if opt.model_name == "IPDS":
@@ -202,8 +215,8 @@ def main():
         n_nodes=dataset.train_node_num,
         n_dim_e=opt.parameter_num,
         n_dim_m=opt.hidden_size,
-        n_dim_d=opt.data_vectors.shape[1]
-        # device="cuda:0"
+        n_dim_d=opt.data_vectors.shape[1],
+        device=opt.cuda
     )
 
     # train the model
@@ -219,9 +232,21 @@ def lossfn(preds, target):
     neg_score = preds.narrow(1, 1, preds.size(1) - 1)
     pos_loss = F.logsigmoid(pos_score).squeeze().sum()
     neg_loss = F.logsigmoid(-1 * neg_score).squeeze().sum()
-    loss = pos_loss + neg_loss
-    return -1 * loss
+    # loss = pos_loss + neg_loss
+    # return -1 * loss
+    return -pos_loss, -neg_loss
 
+
+# def lossfn(preds, target):
+#     # does not use target variable
+#     # one positive sample at the first dimension, and negative samples for remaining dimension.
+#     # loss function
+#     pos_score = preds.narrow(1, 0, 1)
+#     neg_score = preds.narrow(1, 1, preds.size(1) - 1)
+#     pos_loss = F.logsigmoid(pos_score).squeeze().sum()
+#     neg_loss = F.logsigmoid(-1 * neg_score).squeeze().sum()
+#     loss = pos_loss + neg_loss
+#     return -1 * loss
 
 if __name__ == '__main__':
     main()

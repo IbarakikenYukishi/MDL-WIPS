@@ -8,6 +8,7 @@ from torch.autograd import Variable
 from torch.utils.data import Dataset, Sampler
 from sklearn.model_selection import train_test_split
 from gensim.models import KeyedVectors
+from utils import load_data3
 
 
 class EdgeSampler(Sampler):
@@ -72,10 +73,13 @@ class GraphDataset(Dataset):
 
         if task == "linkpred":
             assert data_vectors is not None
+
+            # ノードを訓練テストvalidationに分ける
             train_node, test_node = train_test_split(
                 list(node2id.keys()), test_size=0.2, random_state=seed)
             train_node, valid_node = train_test_split(
                 train_node, test_size=0.2, random_state=seed)
+
             train_node_set = set(train_node)
             node_freq = list()
             valid_node_set = set(valid_node)
@@ -83,6 +87,8 @@ class GraphDataset(Dataset):
             print(f"len(train_node) : {len(train_node)}, len(valid_node) : {len(valid_node)}, len(test_node) : {len(test_node)}")
             new_node2id = defaultdict(lambda: len(new_node2id))
             new_data_vectors = np.empty(data_vectors.shape)
+
+            # data vectorの振り直し?
             for i in train_node:
                 new_data_vectors[new_node2id[i]] = data_vectors[node2id[i]]
                 node_freq.append(id2freq[node2id[i]])
@@ -351,6 +357,98 @@ def preprocess_co_author_network(dir_path, undirect=True, seed=0):
     Edge frequency max :{np.max(list(edges2freq.values()))} min :{np.min(list(edges2freq.values()))} mean :{np.mean(list(edges2freq.values()))}""")
 
     return author2id, id2freq, edges2freq, vectors
+
+
+def preprocess_cora(dir_path):
+    all_data = []
+    all_edges = []
+
+    with open(dir_path + "/cora.content", 'r') as f:
+        all_data.extend(f.read().splitlines())
+    with open(dir_path + "/cora.cites", 'r') as f:
+        all_edges.extend(f.read().splitlines())
+
+    labels = []
+    nodes = []
+    X = []
+
+    for i, data in enumerate(all_data):
+        elements = data.split('\t')
+        labels.append(elements[-1])
+        X.append(elements[1:-1])
+        nodes.append(elements[0])
+
+    X = np.array(X, dtype=int)
+    N = X.shape[0]  # the number of nodes
+    F = X.shape[1]  # the size of node features
+    print('X shape: ', X.shape)
+
+    # parse the edge
+    edge_list = []
+    for edge in all_edges:
+        e = edge.split('\t')
+        edge_list.append((e[0], e[1]))
+
+    nodes = np.array(nodes)
+    labels = np.array(labels)
+    edge_list = np.array(edge_list)
+
+    # labels
+    # nodes
+    # X
+    # edge_list
+
+    nodes2id = {}
+    id2freq = {}
+    edges2freq = {}
+
+    for i in range(len(nodes)):
+        id2freq[i] = 0
+
+    for i, node in enumerate(nodes):
+        nodes2id[str(node)] = i
+        # id2freq[i] += 1
+        # print(nodes_dict)
+
+    for edge in edge_list:
+        i, j = edge
+        id_i = nodes2id[i]
+        id_j = nodes2id[j]
+
+        # update edges2freq
+        if id_i > id_j:
+            id_i, id_j = id_j, id_i
+        edges2freq[(id_i, id_j)] = 1
+
+        # update id2freq
+        id2freq[id_i] += 1
+        id2freq[id_j] += 1
+
+    # print(id2freq)
+    print(edges2freq)
+
+    # node2id = defaultdict(lambda: len(node2id))
+
+    # print(nodes_dict)
+    # print(edge_list)
+
+    print(nodes.shape)
+    print(labels.shape)
+    print(X.shape)
+    print(edge_list.shape)
+
+    # print(X.shape)
+
+    # print(X)
+
+    print('\nNumber of nodes (N): ', N)
+    print('\nNumber of features (F) of each node: ', F)
+    print('\nCategories: ', set(labels))
+
+    num_classes = len(set(labels))
+    print('\nNumber of classes: ', num_classes)
+
+    return nodes2id, id2freq, edges2freq, X
 
 
 def preprocess_webkb_network(dir_path):
