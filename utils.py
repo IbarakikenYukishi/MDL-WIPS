@@ -17,6 +17,7 @@ import train
 import data
 from scipy.special import logsumexp
 
+
 def calc_log_h_prime(
     data_vectors,
     C_1,  # 1
@@ -87,6 +88,9 @@ def lossfn(preds, target):
     loss = pos_loss + neg_loss
     return -1 * loss
 
+
+# from https://github.com/jrios6/graph-neural-networks/blob/master/
+
 def encode_onehot(labels):
     classes = set(labels)
     classes_dict = {c: np.identity(len(classes))[i, :] for i, c in
@@ -136,6 +140,7 @@ def load_data(path="./data/cora/", dataset="cora"):
 
     return adj, features, labels, idx_train, idx_val, idx_test
 
+
 def load_data2(path="./data/cora/", dataset="cora"):
     """Load citation network dataset (cora only for now)"""
     print('Loading {} dataset...'.format(dataset))
@@ -167,7 +172,7 @@ def load_data2(path="./data/cora/", dataset="cora"):
     idx_test = range(500, 1500)
 
     features = torch.FloatTensor(np.array(features.todense()))
-        
+
     labels = torch.LongTensor(np.where(labels)[1])
     #adj = sparse_mx_to_torch_sparse_tensor(adj)
 
@@ -177,7 +182,8 @@ def load_data2(path="./data/cora/", dataset="cora"):
 
     return adj, features, labels, idx_train, idx_val, idx_test
 
-def load_data3(dataset_str):
+
+def load_data3(dir_path, dataset_str):
     """
     FROM https://github.com/tkipf/gcn
     Loads input data from gcn/data directory
@@ -201,32 +207,34 @@ def load_data3(dataset_str):
     names = ['x', 'y', 'tx', 'ty', 'allx', 'ally', 'graph']
     objects = []
     for i in range(len(names)):
-        with open("data/gcn/ind.{}.{}".format(dataset_str, names[i]), 'rb') as f:
+        with open("{}/ind.{}.{}".format(dir_path, dataset_str, names[i]), 'rb') as f:
             if sys.version_info > (3, 0):
                 objects.append(pkl.load(f, encoding='latin1'))
             else:
                 objects.append(pkl.load(f))
 
     x, y, tx, ty, allx, ally, graph = tuple(objects)
-    test_idx_reorder = parse_index_file("data/gcn/ind.{}.test.index".format(dataset_str))
+    test_idx_reorder = parse_index_file(
+        "{}/ind.{}.test.index".format(dir_path, dataset_str))
     test_idx_range = np.sort(test_idx_reorder)
 
     if dataset_str == 'citeseer':
         # Fix citeseer dataset (there are some isolated nodes in the graph)
         # Find isolated nodes, add them as zero-vecs into the right position
-        test_idx_range_full = range(min(test_idx_reorder), max(test_idx_reorder)+1)
+        test_idx_range_full = range(
+            min(test_idx_reorder), max(test_idx_reorder) + 1)
         tx_extended = sp.lil_matrix((len(test_idx_range_full), x.shape[1]))
-        tx_extended[test_idx_range-min(test_idx_range), :] = tx
+        tx_extended[test_idx_range - min(test_idx_range), :] = tx
         tx = tx_extended
         ty_extended = np.zeros((len(test_idx_range_full), y.shape[1]))
-        ty_extended[test_idx_range-min(test_idx_range), :] = ty
+        ty_extended[test_idx_range - min(test_idx_range), :] = ty
         ty = ty_extended
 
     features = sp.vstack((allx, tx)).tolil()
     features[test_idx_reorder, :] = features[test_idx_range, :]
     features = normalize(features)
     features = torch.FloatTensor(np.array(features.todense()))
-    
+
     adj = nx.adjacency_matrix(nx.from_dict_of_lists(graph))
 
     labels = np.vstack((ally, ty))
@@ -234,7 +242,7 @@ def load_data3(dataset_str):
 
     idx_test = test_idx_range.tolist()
     idx_train = range(len(y))
-    idx_val = range(len(y), len(y)+500)
+    idx_val = range(len(y), len(y) + 500)
 
     train_mask = sample_mask(idx_train, labels.shape[0])
     val_mask = sample_mask(idx_val, labels.shape[0])
@@ -249,11 +257,13 @@ def load_data3(dataset_str):
 
     return adj, features, y_train, y_val, y_test, train_mask, val_mask, test_mask, labels
 
+
 def sample_mask(idx, l):
     """Create mask."""
     mask = np.zeros(l)
     mask[idx] = 1
     return np.array(mask, dtype=np.bool)
+
 
 def parse_index_file(filename):
     """Parse index file."""
@@ -261,6 +271,7 @@ def parse_index_file(filename):
     for line in open(filename):
         index.append(int(line.strip()))
     return index
+
 
 def normalize(mx):
     """Row-normalize sparse matrix"""

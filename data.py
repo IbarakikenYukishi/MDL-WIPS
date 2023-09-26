@@ -359,6 +359,157 @@ def preprocess_co_author_network(dir_path, undirect=True, seed=0):
     return author2id, id2freq, edges2freq, vectors
 
 
+def preprocess_citeseer(dir_path):
+    adj, features, y_train, y_val, y_test, train_mask, val_mask, test_mask, labels = load_data3(
+        dir_path, 'citeseer')
+    adj = adj.toarray().astype(float)
+    # adj += np.eye(adj.shape[0])
+    # idx_train = np.argwhere(train_mask).reshape(-1)
+    # idx_val = np.argwhere(val_mask).reshape(-1)
+    # idx_test = np.argwhere(test_mask).reshape(-1)
+    # print(labels)
+    # print(np.where(labels))
+    # print(set(range(len(adj))) - set(np.where(labels)[0]))
+
+    # ラベルがついていないものはとりのぞく
+    idx_with_label = np.where(labels)[0]
+
+    labels = labels[idx_with_label]
+    features = features[idx_with_label]
+    adj = adj[idx_with_label, :][:, idx_with_label]
+
+    # labels = torch.LongTensor(np.where(labels)[1])
+
+    # print(adj.shape)
+    # print(features.shape)
+    # print(y_train.shape)
+    # print(y_val.shape)
+    # print(y_test.shape)
+    # print(train_mask.shape)
+    # print(val_mask.shape)
+    # print(test_mask.shape)
+    # print(labels.shape)
+
+    # print(labels)
+
+    features = features.numpy()
+
+    # print(y_train)
+    # print(y_val)
+    # print(y_test)
+
+    # for i in range(len(adj)):
+    #     for j in range(i+1, len(adj)):
+    #         if adj[i, j]==adj[j, i]:
+    #             print("not symmetric")
+
+    # print(adj)
+    # print(np.sum(adj, axis=0))
+
+    # print(np.array(np.where(adj == 1)).T)
+
+    node2id = {}
+    id2freq = {}
+    edges2freq = {}
+
+    n = adj.shape[0]
+    freq = np.sum(adj, axis=1)
+
+    for i in range(n):
+        node2id[str(i)] = i
+        id2freq[i] = freq[i]
+
+    adj = np.triu(adj)
+
+    for e in np.array(np.where(adj == 1)).T:
+        if e[0] < e[1]:
+            edges2freq[(e[0], e[1])] = 1
+        else:
+            edges2freq[(e[1], e[0])] = 1
+
+    print(f"""Node num : {len(node2id)},
+    Node frequency max :{np.max(list(id2freq.values()))} min :{np.min(list(id2freq.values()))} mean :{np.mean(list(id2freq.values()))},
+    Edge num : {len(edges2freq)},
+    Edge frequency max :{np.max(list(edges2freq.values()))} min :{np.min(list(edges2freq.values()))} mean :{np.mean(list(edges2freq.values()))}""")
+
+    return node2id, id2freq, edges2freq, features, labels
+
+def preprocess_pubmed(dir_path):
+    adj, features, y_train, y_val, y_test, train_mask, val_mask, test_mask, labels = load_data3(
+        dir_path, 'pubmed')
+    adj = adj.toarray().astype(float)
+    # adj += np.eye(adj.shape[0])
+    # idx_train = np.argwhere(train_mask).reshape(-1)
+    # idx_val = np.argwhere(val_mask).reshape(-1)
+    # idx_test = np.argwhere(test_mask).reshape(-1)
+    # print(labels)
+    # print(np.where(labels))
+    # print(set(range(len(adj))) - set(np.where(labels)[0]))
+
+    # ラベルがついていないものはとりのぞく
+    idx_with_label = np.where(labels)[0]
+
+    labels = labels[idx_with_label]
+    features = features[idx_with_label]
+    adj = adj[idx_with_label, :][:, idx_with_label]
+
+    # labels = torch.LongTensor(np.where(labels)[1])
+
+    # print(adj.shape)
+    # print(features.shape)
+    # print(y_train.shape)
+    # print(y_val.shape)
+    # print(y_test.shape)
+    # print(train_mask.shape)
+    # print(val_mask.shape)
+    # print(test_mask.shape)
+    # print(labels.shape)
+
+    # print(labels)
+
+    features = features.numpy()
+
+    # print(y_train)
+    # print(y_val)
+    # print(y_test)
+
+    # for i in range(len(adj)):
+    #     for j in range(i+1, len(adj)):
+    #         if adj[i, j]==adj[j, i]:
+    #             print("not symmetric")
+
+    # print(adj)
+    # print(np.sum(adj, axis=0))
+
+    # print(np.array(np.where(adj == 1)).T)
+
+    node2id = {}
+    id2freq = {}
+    edges2freq = {}
+
+    n = adj.shape[0]
+    freq = np.sum(adj, axis=1)
+
+    for i in range(n):
+        node2id[str(i)] = i
+        id2freq[i] = freq[i]
+
+    adj = np.triu(adj)
+
+    for e in np.array(np.where(adj == 1)).T:
+        if e[0] < e[1]:
+            edges2freq[(e[0], e[1])] = 1
+        else:
+            edges2freq[(e[1], e[0])] = 1
+
+    print(f"""Node num : {len(node2id)},
+    Node frequency max :{np.max(list(id2freq.values()))} min :{np.min(list(id2freq.values()))} mean :{np.mean(list(id2freq.values()))},
+    Edge num : {len(edges2freq)},
+    Edge frequency max :{np.max(list(edges2freq.values()))} min :{np.min(list(edges2freq.values()))} mean :{np.mean(list(edges2freq.values()))}""")
+
+    return node2id, id2freq, edges2freq, features, labels
+
+
 def preprocess_cora(dir_path):
     all_data = []
     all_edges = []

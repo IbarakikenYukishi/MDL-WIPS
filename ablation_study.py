@@ -24,7 +24,7 @@ def main():
     parser.add_argument('-exp_name', help='Experiment name', type=str,
                         default=str(datetime.datetime.now()).replace(" ", "_"))
     parser.add_argument('-graph_type', help='Graph type: "webkb", "collab" or "hierarchy"',
-                        type=str, required=True, choices=["hierarchy", "collab", "webkb", "cora"])
+                        type=str, required=True, choices=["hierarchy", "collab", "webkb", "cora", "citeseer", "pubmed"])
     parser.add_argument(
         '-neproc', help='Number of eval processes', type=int, default=32)
     # parser.add_argument('-seed', help='Random seed', type=int, required=False)
@@ -37,6 +37,11 @@ def main():
                         type=str, required=False)
     parser.add_argument('-cora_path', help='cora_path',
                         type=str, required=False)
+    parser.add_argument('-citeseer_path', help='citeseer_path',
+                        type=str, required=False)
+    parser.add_argument('-pubmed_path', help='pubmed_path',
+                        type=str, required=False)    
+
     # parser.add_argument(
     #     '-word2vec_path', help='word2vec_path', type=str, required=False)
     parser.add_argument(
@@ -138,6 +143,12 @@ def main():
     elif opt.graph_type == "cora":
         word2id, id2freq, edges2freq, vectors = data.preprocess_cora(
             opt.cora_path)
+    elif opt.graph_type == "citeseer":
+        word2id, id2freq, edges2freq, vectors, labels = data.preprocess_citeseer(
+            opt.citeseer_path)
+    elif opt.graph_type == "pubmed":
+        word2id, id2freq, edges2freq, vectors, labels = data.preprocess_pubmed(
+            opt.pubmed_path)
 
     vectors = np.concatenate((vectors, np.ones((vectors.shape[0], 1))), axis=1)
     # print(vectors.shape)
@@ -149,7 +160,7 @@ def main():
     # print(id2freq)
 
     # edgeのペアのfrequency?
-    print(edges2freq)
+    # print(edges2freq)
 
     # vectors: GraphDatasetに使う。reconstの場合はdata vectorになり、link
     # predictionの場合は何らかの処理を加え、data vectorの元になる。
