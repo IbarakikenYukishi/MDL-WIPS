@@ -25,8 +25,10 @@ def main():
                         default=str(datetime.datetime.now()).replace(" ", "_"))
     parser.add_argument('-graph_type', help='Graph type: "webkb", "collab" or "hierarchy"',
                         type=str, required=True, choices=["hierarchy", "collab", "webkb", "cora", "citeseer", "pubmed"])
+    # parser.add_argument(
+    #     '-neproc', help='Number of eval processes', type=int, default=32)
     parser.add_argument(
-        '-neproc', help='Number of eval processes', type=int, default=32)
+        '-neproc', help='Number of eval processes', type=int, default=8)
     # parser.add_argument('-seed', help='Random seed', type=int, required=False)
     parser.add_argument('-seed', help='Random seed',
                         type=int, default=1, required=False)
@@ -40,7 +42,7 @@ def main():
     parser.add_argument('-citeseer_path', help='citeseer_path',
                         type=str, required=False)
     parser.add_argument('-pubmed_path', help='pubmed_path',
-                        type=str, required=False)    
+                        type=str, required=False)
 
     # parser.add_argument(
     #     '-word2vec_path', help='word2vec_path', type=str, required=False)
@@ -83,7 +85,7 @@ def main():
 
     # parser.add_argument('-model_name', help='Model: "IPS", "SIPS", "NPD", "IPDS" or "WIPS"',
     # type=str, required=True, choices=["IPS", "SIPS", "NPD", "IPDS", "WIPS"])
-    parser.add_argument('-model_name', help='Model: "IPS", "SIPS", "NPD", "IPDS" or "WIPS"',
+    parser.add_argument('-model_name', help='Model: "IPS", "SIPS", "NPD", "IPDS", "WIPS" or "MDL-WIPS"',
                         type=str, required=True, choices=["IPS", "SIPS", "NPD", "IPDS", "WIPS", "MDL_WIPS"])
     parser.add_argument('-task', help='', type=str, default="reconst")
     # parser.add_argument(
@@ -134,14 +136,14 @@ def main():
     if opt.graph_type == "hierarchy":
         word2id, id2freq, edges2freq, vectors = data.preprocess_hierarchy(
             opt.word2vec_path, use_rich_information=False)
-    elif opt.graph_type == "collab":
-        word2id, id2freq, edges2freq, vectors = data.preprocess_co_author_network(
-            opt.dblp_path)
+    # elif opt.graph_type == "collab":
+    #     word2id, id2freq, edges2freq, vectors = data.preprocess_co_author_network(
+    #         opt.dblp_path)
     elif opt.graph_type == "webkb":
-        word2id, id2freq, edges2freq, vectors = data.preprocess_webkb_network(
+        word2id, id2freq, edges2freq, vectors, labels = data.preprocess_webkb_network(
             opt.webkb_path)
     elif opt.graph_type == "cora":
-        word2id, id2freq, edges2freq, vectors = data.preprocess_cora(
+        word2id, id2freq, edges2freq, vectors, labels = data.preprocess_cora(
             opt.cora_path)
     elif opt.graph_type == "citeseer":
         word2id, id2freq, edges2freq, vectors, labels = data.preprocess_citeseer(
@@ -176,7 +178,7 @@ def main():
 
     opt.lik_pos_ratio = len(edges2freq) / opt.batchsize
     opt.lik_neg_ratio = (
-        opt.train_node_num * (opt.train_node_num - 1)/2 - len(edges2freq)) / (opt.batchsize*opt.negs)
+        opt.train_node_num * (opt.train_node_num - 1) / 2 - len(edges2freq)) / (opt.batchsize * opt.negs)
 
     # print(opt.lik_neg_ratio)
     # print(opt.lik_pos_ratio)
@@ -231,9 +233,17 @@ def main():
     )
 
     # train the model
-    train.trainer_for_ablation(model, dataset, lossfn, optimizer,
-                               opt.__dict__, log, opt.cuda)
-
+    train.trainer_for_ablation(
+        model,
+        dataset,
+        lossfn,
+        optimizer,
+        opt.__dict__,
+        log,
+        opt.cuda,
+        node_clf=True,
+        labels=labels,
+    )
 
 def lossfn(preds, target):
     # does not use target variable

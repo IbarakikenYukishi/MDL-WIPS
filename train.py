@@ -12,6 +12,11 @@ from torch.autograd import Variable
 from torch.utils.data import DataLoader
 from torch import optim
 from copy import deepcopy
+from sklearn.linear_model import LogisticRegression, LogisticRegressionCV
+from sklearn.metrics import confusion_matrix, accuracy_score, precision_score, recall_score, f1_score
+
+
+os.environ["OMP_NUM_THREADS"] = "4"
 
 
 class ProxSGD(optim.Optimizer):
@@ -79,9 +84,6 @@ class ProxSGD(optim.Optimizer):
         param_A = group["params"][2]
         A_tilde = torch.cat(
             (param_l.reshape((-1, 1)), param_A), dim=1)
-
-        # print(group["alpha"].device)
-        # print(A_tilde.device)
 
         ret += torch.sum(group["alpha"] *
                          torch.norm(A_tilde, dim=1)).cpu().item()
@@ -200,7 +202,9 @@ def trainer_for_ablation(
     opt,
     log,
     cuda,
-    required_sparsity=0.1
+    required_sparsity=-1,
+    node_clf=False,
+    labels=None,
 ):
     # dataloader
     loader = DataLoader(
@@ -227,7 +231,7 @@ def trainer_for_ablation(
     while True:
         train_loss = []
         loss = None
-        uLNML_list = []
+        # uLNML_list = []
         lik_list = []
 
         for inputs, targets in loader:
@@ -252,8 +256,8 @@ def trainer_for_ablation(
             # optimize alpha for every x iteration
             lik_list.append(
                 pos_loss.item() * opt["lik_pos_ratio"] + neg_loss.item() * opt["lik_neg_ratio"] + optimizer.regularization_term())
-            uLNML_list.append(pos_loss.item() * opt["lik_pos_ratio"] + neg_loss.item() *
-                              opt["lik_neg_ratio"] + optimizer.upper_bound_on_PC().item())
+            # uLNML_list.append(pos_loss.item() * opt["lik_pos_ratio"] + neg_loss.item() *
+            #                   opt["lik_neg_ratio"] + optimizer.upper_bound_on_PC().item())
             # uLNML.append(optimizer.upper_bound_on_PC().item())
 
             if iter_counter % 10000 == 0:
@@ -263,7 +267,7 @@ def trainer_for_ablation(
             if iter_counter % opt["eval_each"] == 0:
                 # print(np.mean(lik_list))
                 # print(np.mean(uLNML_list))
-                uLNML_list = []
+                # uLNML_list = []
                 lik_list = []
 
                 pbar.close()
@@ -272,6 +276,16 @@ def trainer_for_ablation(
                 # model, dataset.neighbor_train, dataset.neighbor_valid,
                 # dataset.neighbor_test, dataset.task, log, opt["neproc"],
                 # cuda, True)
+                if node_clf:
+                    ROCAUC_train_c, ROCAUC_valid_c, ROCAUC_test_c, eval_elapsed_c = evaluation_classification(
+                        model,
+                        labels,
+                        dataset.train_ids,
+                        dataset.valid_ids,
+                        dataset.test_ids,
+                        # log,
+                    )
+
                 ROCAUC_train, ROCAUC_valid, ROCAUC_test, eval_elapsed = evaluation(
                     model,
                     dataset.neighbor_train,
@@ -496,6 +510,107 @@ def trainer(
                     'total_iteration': iter_counter,
                 }, f'{opt["save_dir"]}/{opt["exp_name"]}.pth')
                 sys.exit()
+
+
+def evaluation_classification(
+    model,
+    labels,
+    train_ids,
+    valid_ids,
+    test_ids
+):
+    t_start = timeit.default_timer()
+
+    ips_weight = None
+
+    embeds = model.embed()[0]
+
+    train_embeds = embeds[train_ids, :]
+    valid_embeds = embeds[valid_ids, :]
+    test_embeds = embeds[test_ids, :]
+
+    train_labels = labels[train_ids]
+    valid_labels = labels[valid_ids]
+    test_labels = labels[test_ids]
+
+    # lr = LogisticRegression(max_iter=10000, C=1e5)
+    lr = LogisticRegressionCV(cv=5, max_iter=10000)
+    # lr = lr.fit(embeds, labels)
+    lr.fit(train_embeds, train_labels)
+    # print(lr.predict(train_embeds))
+
+    f1_micro_train = f1_score(
+        y_true=train_labels, y_pred=lr.predict(train_embeds), average="micro")
+    f1_micro_valid = f1_score(
+        y_true=valid_labels, y_pred=lr.predict(valid_embeds), average="micro")
+    f1_micro_test = f1_score(
+        y_true=test_labels, y_pred=lr.predict(test_embeds), average="micro")
+
+    f1_macro_train = f1_score(
+        y_true=train_labels, y_pred=lr.predict(train_embeds), average="macro")
+    f1_macro_valid = f1_score(
+        y_true=valid_labels, y_pred=lr.predict(valid_embeds), average="macro")
+    f1_macro_test = f1_score(
+        y_true=test_labels, y_pred=lr.predict(test_embeds), average="macro")
+
+    # r_f1_micro_train = f1_score(y_true=train_labels, y_pred=np.random.randint(
+    #     5, size=len(train_embeds)), average="micro")
+    # r_f1_micro_valid = f1_score(y_true=valid_labels, y_pred=np.random.randint(
+    #     5, size=len(valid_embeds)), average="micro")
+    # r_f1_micro_test = f1_score(y_true=test_labels, y_pred=np.random.randint(
+    #     5, size=len(test_embeds)), average="micro")
+
+    # r_f1_macro_train = f1_score(y_true=train_labels, y_pred=np.random.randint(
+    #     5, size=len(train_embeds)), average="macro")
+    # r_f1_macro_valid = f1_score(y_true=valid_labels, y_pred=np.random.randint(
+    #     5, size=len(valid_embeds)), average="macro")
+    # r_f1_macro_test = f1_score(y_true=test_labels, y_pred=np.random.randint(
+    #     5, size=len(test_embeds)), average="macro")
+
+    # valid_pred = lr.predict(valid_embeds)
+    # valid_pred = lr.predict(valid_embeds)
+
+    # print('accuracy = ', accuracy_score(y_true=valid_labels, y_pred=valid_pred))
+
+    print("inductive setting")
+    print(f1_micro_train)
+    print(f1_micro_valid)
+    print(f1_micro_test)
+
+    print(f1_macro_train)
+    print(f1_macro_valid)
+    print(f1_macro_test)
+
+    # print(r_f1_micro_train)
+    # print(r_f1_micro_valid)
+    # print(r_f1_micro_test)
+
+    # print(r_f1_macro_train)
+    # print(r_f1_macro_valid)
+    # print(r_f1_macro_test)
+
+    # lr = LogisticRegression(max_iter=10000, C=1e5)
+    lr = LogisticRegressionCV(cv=5, max_iter=10000)
+
+    # lr = lr.fit(embeds, labels)
+    lr.fit(train_embeds[:int(len(train_embeds) * 0.8)],
+           train_labels[:int(len(train_embeds) * 0.8)])
+    f1_micro_train = f1_score(
+        y_true=train_labels[:int(len(train_embeds) * 0.8)], y_pred=lr.predict(train_embeds[:int(len(train_embeds) * 0.8)]), average="micro")
+    f1_macro_train = f1_score(
+        y_true=train_labels[:int(len(train_embeds) * 0.8)], y_pred=lr.predict(train_embeds[:int(len(train_embeds) * 0.8)]), average="macro")
+
+    f1_micro_test = f1_score(
+        y_true=train_labels[int(len(train_embeds) * 0.8):], y_pred=lr.predict(train_embeds[int(len(train_embeds) * 0.8):]), average="micro")
+    f1_macro_test = f1_score(
+        y_true=train_labels[int(len(train_embeds) * 0.8):], y_pred=lr.predict(train_embeds[int(len(train_embeds) * 0.8):]), average="macro")
+    print("transductive")
+    print(f1_micro_train)
+    print(f1_micro_test)
+    print(f1_macro_train)
+    print(f1_macro_test)
+
+    return f1_macro_train, f1_macro_valid, f1_macro_test, timeit.default_timer() - t_start
 
 
 def evaluation(

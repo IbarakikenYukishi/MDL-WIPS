@@ -64,7 +64,17 @@ class GraphDataset(Dataset):
     node_table_size = int(1e5)
     edge_table_size = int(5e5)
 
-    def __init__(self, node2id, id2freq, edges2freq, nnegs, smoothing_rate_for_node, data_vectors=None, task="reconst", seed=0):
+    def __init__(
+        self,
+        node2id,
+        id2freq,
+        edges2freq,
+        nnegs,
+        smoothing_rate_for_node,
+        data_vectors=None,
+        task="reconst",
+        seed=0
+    ):
         assert task in ["reconst", "linkpred"]
 
         self.smoothing_rate_for_node = smoothing_rate_for_node
@@ -79,6 +89,21 @@ class GraphDataset(Dataset):
                 list(node2id.keys()), test_size=0.2, random_state=seed)
             train_node, valid_node = train_test_split(
                 train_node, test_size=0.2, random_state=seed)
+
+            self.train_ids = []
+            self.valid_ids = []
+            self.test_ids = []
+
+            for n in train_node:
+                self.train_ids.append(int(node2id[n]))
+            for n in valid_node:
+                self.valid_ids.append(int(node2id[n]))
+            for n in test_node:
+                self.test_ids.append(int(node2id[n]))
+
+            self.train_ids=np.array(self.train_ids)
+            self.valid_ids=np.array(self.valid_ids)
+            self.test_ids=np.array(self.test_ids)
 
             train_node_set = set(train_node)
             node_freq = list()
@@ -363,50 +388,18 @@ def preprocess_citeseer(dir_path):
     adj, features, y_train, y_val, y_test, train_mask, val_mask, test_mask, labels = load_data3(
         dir_path, 'citeseer')
     adj = adj.toarray().astype(float)
-    # adj += np.eye(adj.shape[0])
-    # idx_train = np.argwhere(train_mask).reshape(-1)
-    # idx_val = np.argwhere(val_mask).reshape(-1)
-    # idx_test = np.argwhere(test_mask).reshape(-1)
-    # print(labels)
-    # print(np.where(labels))
-    # print(set(range(len(adj))) - set(np.where(labels)[0]))
 
     # ラベルがついていないものはとりのぞく
     idx_with_label = np.where(labels)[0]
 
-    labels = labels[idx_with_label]
+    labels = labels[idx_with_label, :]
+    labels = np.where(labels)[1]
     features = features[idx_with_label]
     adj = adj[idx_with_label, :][:, idx_with_label]
 
-    # labels = torch.LongTensor(np.where(labels)[1])
-
-    # print(adj.shape)
-    # print(features.shape)
-    # print(y_train.shape)
-    # print(y_val.shape)
-    # print(y_test.shape)
-    # print(train_mask.shape)
-    # print(val_mask.shape)
-    # print(test_mask.shape)
-    # print(labels.shape)
-
-    # print(labels)
-
     features = features.numpy()
 
-    # print(y_train)
-    # print(y_val)
-    # print(y_test)
-
-    # for i in range(len(adj)):
-    #     for j in range(i+1, len(adj)):
-    #         if adj[i, j]==adj[j, i]:
-    #             print("not symmetric")
-
-    # print(adj)
-    # print(np.sum(adj, axis=0))
-
-    # print(np.array(np.where(adj == 1)).T)
+    # for input data
 
     node2id = {}
     id2freq = {}
@@ -434,55 +427,24 @@ def preprocess_citeseer(dir_path):
 
     return node2id, id2freq, edges2freq, features, labels
 
+
 def preprocess_pubmed(dir_path):
     adj, features, y_train, y_val, y_test, train_mask, val_mask, test_mask, labels = load_data3(
         dir_path, 'pubmed')
     adj = adj.toarray().astype(float)
-    # adj += np.eye(adj.shape[0])
-    # idx_train = np.argwhere(train_mask).reshape(-1)
-    # idx_val = np.argwhere(val_mask).reshape(-1)
-    # idx_test = np.argwhere(test_mask).reshape(-1)
-    # print(labels)
-    # print(np.where(labels))
-    # print(set(range(len(adj))) - set(np.where(labels)[0]))
 
     # ラベルがついていないものはとりのぞく
     idx_with_label = np.where(labels)[0]
 
     labels = labels[idx_with_label]
+    labels = np.where(labels)[1]
+
     features = features[idx_with_label]
     adj = adj[idx_with_label, :][:, idx_with_label]
 
-    # labels = torch.LongTensor(np.where(labels)[1])
-
-    # print(adj.shape)
-    # print(features.shape)
-    # print(y_train.shape)
-    # print(y_val.shape)
-    # print(y_test.shape)
-    # print(train_mask.shape)
-    # print(val_mask.shape)
-    # print(test_mask.shape)
-    # print(labels.shape)
-
-    # print(labels)
-
     features = features.numpy()
 
-    # print(y_train)
-    # print(y_val)
-    # print(y_test)
-
-    # for i in range(len(adj)):
-    #     for j in range(i+1, len(adj)):
-    #         if adj[i, j]==adj[j, i]:
-    #             print("not symmetric")
-
-    # print(adj)
-    # print(np.sum(adj, axis=0))
-
-    # print(np.array(np.where(adj == 1)).T)
-
+    # for input data
     node2id = {}
     id2freq = {}
     edges2freq = {}
@@ -544,10 +506,7 @@ def preprocess_cora(dir_path):
     labels = np.array(labels)
     edge_list = np.array(edge_list)
 
-    # labels
-    # nodes
-    # X
-    # edge_list
+    # for input data
 
     nodes2id = {}
     id2freq = {}
@@ -558,8 +517,6 @@ def preprocess_cora(dir_path):
 
     for i, node in enumerate(nodes):
         nodes2id[str(node)] = i
-        # id2freq[i] += 1
-        # print(nodes_dict)
 
     for edge in edge_list:
         i, j = edge
@@ -575,23 +532,6 @@ def preprocess_cora(dir_path):
         id2freq[id_i] += 1
         id2freq[id_j] += 1
 
-    # print(id2freq)
-    print(edges2freq)
-
-    # node2id = defaultdict(lambda: len(node2id))
-
-    # print(nodes_dict)
-    # print(edge_list)
-
-    print(nodes.shape)
-    print(labels.shape)
-    print(X.shape)
-    print(edge_list.shape)
-
-    # print(X.shape)
-
-    # print(X)
-
     print('\nNumber of nodes (N): ', N)
     print('\nNumber of features (F) of each node: ', F)
     print('\nCategories: ', set(labels))
@@ -599,7 +539,7 @@ def preprocess_cora(dir_path):
     num_classes = len(set(labels))
     print('\nNumber of classes: ', num_classes)
 
-    return nodes2id, id2freq, edges2freq, X
+    return nodes2id, id2freq, edges2freq, X, labels
 
 
 def preprocess_webkb_network(dir_path):
@@ -620,16 +560,37 @@ def preprocess_webkb_network(dir_path):
     id2freq = dict(id2freq)
     vectors = np.empty((len(node2id), 1703), dtype=np.float)
     lines = open(dir_path + "/WebKB.content").readlines()
+    labels = np.empty(len(node2id), dtype=int)
+    categories = []
+
     for line in lines:
         elements = line.strip().split()
+        categories.append(elements[-1])
+    categories = list(set(categories))
+    print(categories)
+    # print(lines)
+
+    cat2id = {}
+    for i, cat in enumerate(categories):
+        cat2id[cat] = i
+
+    for line in lines:
+        elements = line.strip().split()
+        # print(len(elements))
         node = str(elements[0])
         vec = np.array([int(i) for i in elements[1:-1]], dtype=np.float)
         assert len(vec) == 1703
         vectors[node2id[node]] = vec
+        # print(node2id[node])
+        # print(elements[-1])
+        labels[node2id[node]] = cat2id[elements[-1]]
+
+    # print(labels)
+    # print(set(labels))
 
     print(f"""Node num : {len(node2id)},
     Node frequency max :{np.max(list(id2freq.values()))} min :{np.min(list(id2freq.values()))} mean :{np.mean(list(id2freq.values()))},
     Edge num : {len(edges2freq)},
     Edge frequency max :{np.max(list(edges2freq.values()))} min :{np.min(list(edges2freq.values()))} mean :{np.mean(list(edges2freq.values()))}""")
 
-    return node2id, id2freq, edges2freq, vectors
+    return node2id, id2freq, edges2freq, vectors, labels
