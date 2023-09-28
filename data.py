@@ -75,7 +75,7 @@ class GraphDataset(Dataset):
         task="reconst",
         seed=0
     ):
-        assert task in ["reconst", "linkpred"]
+        assert task in ["reconst", "linkpred", "nodeclf"]
 
         self.smoothing_rate_for_node = smoothing_rate_for_node
         self.nnegs = nnegs
@@ -90,20 +90,20 @@ class GraphDataset(Dataset):
             train_node, valid_node = train_test_split(
                 train_node, test_size=0.2, random_state=seed)
 
-            self.train_ids = []
-            self.valid_ids = []
-            self.test_ids = []
+            # self.train_ids = []
+            # self.valid_ids = []
+            # self.test_ids = []
 
-            for n in train_node:
-                self.train_ids.append(int(node2id[n]))
-            for n in valid_node:
-                self.valid_ids.append(int(node2id[n]))
-            for n in test_node:
-                self.test_ids.append(int(node2id[n]))
+            # for n in train_node:
+            #     self.train_ids.append(int(node2id[n]))
+            # for n in valid_node:
+            #     self.valid_ids.append(int(node2id[n]))
+            # for n in test_node:
+            #     self.test_ids.append(int(node2id[n]))
 
-            self.train_ids=np.array(self.train_ids)
-            self.valid_ids=np.array(self.valid_ids)
-            self.test_ids=np.array(self.test_ids)
+            # self.train_ids=np.array(self.train_ids)
+            # self.valid_ids=np.array(self.valid_ids)
+            # self.test_ids=np.array(self.test_ids)
 
             train_node_set = set(train_node)
             node_freq = list()
@@ -169,7 +169,30 @@ class GraphDataset(Dataset):
             self.neighbor_valid = neighbor_valid
             self.neighbor_test = neighbor_test
 
-        elif task == "reconst":
+        # elif task == "reconst":
+        else:
+            if task == "nodeclf":
+                # ノードを訓練テストvalidationに分ける
+                train_node, test_node = train_test_split(
+                    list(node2id.keys()), test_size=0.2, random_state=seed)
+                train_node, valid_node = train_test_split(
+                    train_node, test_size=0.2, random_state=seed)
+
+                self.train_ids = []
+                self.valid_ids = []
+                self.test_ids = []
+
+                for n in train_node:
+                    self.train_ids.append(int(node2id[n]))
+                for n in valid_node:
+                    self.valid_ids.append(int(node2id[n]))
+                for n in test_node:
+                    self.test_ids.append(int(node2id[n]))
+
+                self.train_ids = np.array(self.train_ids)
+                self.valid_ids = np.array(self.valid_ids)
+                self.test_ids = np.array(self.test_ids)
+
             self.node2id = node2id
             self.data_vectors = data_vectors
             self.total_node_num = len(node2id)
@@ -205,7 +228,9 @@ class GraphDataset(Dataset):
             self.neighbor_test = None
             assert len(self.neighbor_train) == self.train_node_num
 
-        # ノードの選択確率?negative samplingっぽい感じにはなっている
+        # else:
+
+            # ノードの選択確率?negative samplingっぽい感じにはなっている
         c = self.node_freq ** self.smoothing_rate_for_node
         self.sample_node_table = np.zeros(self.node_table_size, dtype=int)
         index = 0

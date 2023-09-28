@@ -276,27 +276,27 @@ def trainer_for_ablation(
                 # model, dataset.neighbor_train, dataset.neighbor_valid,
                 # dataset.neighbor_test, dataset.task, log, opt["neproc"],
                 # cuda, True)
-                if node_clf:
-                    ROCAUC_train_c, ROCAUC_valid_c, ROCAUC_test_c, eval_elapsed_c = evaluation_classification(
+                if opt["task"]=="nodeclf":
+                    ROCAUC_train, ROCAUC_valid, ROCAUC_test, eval_elapsed = evaluation_classification(
                         model,
                         labels,
                         dataset.train_ids,
                         dataset.valid_ids,
                         dataset.test_ids,
-                        # log,
+                        log
                     )
-
-                ROCAUC_train, ROCAUC_valid, ROCAUC_test, eval_elapsed = evaluation(
-                    model,
-                    dataset.neighbor_train,
-                    dataset.neighbor_valid,
-                    dataset.neighbor_test,
-                    dataset.task,
-                    log,
-                    opt["neproc"],
-                    True,
-                    True
-                )
+                else:
+                    ROCAUC_train, ROCAUC_valid, ROCAUC_test, eval_elapsed = evaluation(
+                        model,
+                        dataset.neighbor_train,
+                        dataset.neighbor_valid,
+                        dataset.neighbor_test,
+                        dataset.task,
+                        log,
+                        opt["neproc"],
+                        True,
+                        True
+                    )
                 model.train()
 
                 # update maximum performance
@@ -517,11 +517,21 @@ def evaluation_classification(
     labels,
     train_ids,
     valid_ids,
-    test_ids
+    test_ids,
+    log
 ):
     t_start = timeit.default_timer()
 
     ips_weight = None
+
+    embeds = model.embed()
+    if model.model == "WIPS" or model.model == "MDL_WIPS":
+        ips_weight = model.get_ips_weight()
+        # log.info("WIPS's ips weight's ratio : pos {}, neg {}".format(
+        #     np.sum(ips_weight >= 0), np.sum(ips_weight < 0)))
+        log.info("WIPS's ips weight's ratio : pos {}, zero {}, neg {}".format(
+            np.sum(ips_weight > 0), np.sum(ips_weight == 0), np.sum(ips_weight < 0)))
+
 
     embeds = model.embed()[0]
 
@@ -590,27 +600,27 @@ def evaluation_classification(
     # print(r_f1_macro_test)
 
     # lr = LogisticRegression(max_iter=10000, C=1e5)
-    lr = LogisticRegressionCV(cv=5, max_iter=10000)
+    # lr = LogisticRegressionCV(cv=5, max_iter=10000)
 
-    # lr = lr.fit(embeds, labels)
-    lr.fit(train_embeds[:int(len(train_embeds) * 0.8)],
-           train_labels[:int(len(train_embeds) * 0.8)])
-    f1_micro_train = f1_score(
-        y_true=train_labels[:int(len(train_embeds) * 0.8)], y_pred=lr.predict(train_embeds[:int(len(train_embeds) * 0.8)]), average="micro")
-    f1_macro_train = f1_score(
-        y_true=train_labels[:int(len(train_embeds) * 0.8)], y_pred=lr.predict(train_embeds[:int(len(train_embeds) * 0.8)]), average="macro")
+    # # lr = lr.fit(embeds, labels)
+    # lr.fit(train_embeds[:int(len(train_embeds) * 0.8)],
+    #        train_labels[:int(len(train_embeds) * 0.8)])
+    # f1_micro_train = f1_score(
+    #     y_true=train_labels[:int(len(train_embeds) * 0.8)], y_pred=lr.predict(train_embeds[:int(len(train_embeds) * 0.8)]), average="micro")
+    # f1_macro_train = f1_score(
+    #     y_true=train_labels[:int(len(train_embeds) * 0.8)], y_pred=lr.predict(train_embeds[:int(len(train_embeds) * 0.8)]), average="macro")
 
-    f1_micro_test = f1_score(
-        y_true=train_labels[int(len(train_embeds) * 0.8):], y_pred=lr.predict(train_embeds[int(len(train_embeds) * 0.8):]), average="micro")
-    f1_macro_test = f1_score(
-        y_true=train_labels[int(len(train_embeds) * 0.8):], y_pred=lr.predict(train_embeds[int(len(train_embeds) * 0.8):]), average="macro")
-    print("transductive")
-    print(f1_micro_train)
-    print(f1_micro_test)
-    print(f1_macro_train)
-    print(f1_macro_test)
+    # f1_micro_test = f1_score(
+    #     y_true=train_labels[int(len(train_embeds) * 0.8):], y_pred=lr.predict(train_embeds[int(len(train_embeds) * 0.8):]), average="micro")
+    # f1_macro_test = f1_score(
+    #     y_true=train_labels[int(len(train_embeds) * 0.8):], y_pred=lr.predict(train_embeds[int(len(train_embeds) * 0.8):]), average="macro")
+    # print("transductive")
+    # print(f1_micro_train)
+    # print(f1_micro_test)
+    # print(f1_macro_train)
+    # print(f1_macro_test)
 
-    return f1_macro_train, f1_macro_valid, f1_macro_test, timeit.default_timer() - t_start
+    return f1_micro_train, f1_micro_valid, f1_micro_test, timeit.default_timer() - t_start
 
 
 def evaluation(
