@@ -217,6 +217,8 @@ def main():
         n_dim_m=opt.hidden_size,
         n_dim_d=opt.data_vectors.shape[1],
     )
+
+    if 
     optimizer = train.ProxSGD(
         params=filtered_parameters,
         # lr=opt.init_lr * opt.batchsize,
@@ -241,9 +243,10 @@ def main():
         opt.__dict__,
         log,
         opt.cuda,
-        node_clf=True,
+        # node_clf=True,
         labels=labels,
     )
+
 
 def lossfn(preds, target):
     # does not use target variable

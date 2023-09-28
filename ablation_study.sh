@@ -57,16 +57,6 @@ elif [ $graph_type = "pubmed" ]; then
     hidden_size=1000
 fi
 
-# iter=100000
-# # eval_each=5000
-# eval_each=2500
-# init_lrs=(0.8 0.4 0.2 0.1 0.05)
-# batchsize=64
-# # parameter_nums=(10 20 30 40 50 60 70 80 90 100 150 200 250 300)
-# parameter_nums=(20 30 40 60 80 100)
-# # parameter_nums=(100 150 200 250 300)
-# hidden_size=1000
-
 device=0
 n_devices=4
 
