@@ -234,6 +234,11 @@ def trainer_for_ablation(
         # uLNML_list = []
         lik_list = []
 
+        ROCAUC_train_list = []
+        ROCAUC_valid_list = []
+        ROCAUC_test_list = []
+        sparsity_list = []
+
         for inputs, targets in loader:
             pbar.update(1)
 
@@ -244,6 +249,9 @@ def trainer_for_ablation(
             # update parameters until reaching to the predefined number of
             # iterations
             optimizer.zero_grad()
+            # import inspect
+            # for x in inspect.getmembers(model, inspect.ismethod):
+            #     print(x[0])
             preds = model(inputs)
             pos_loss, neg_loss = lossfn(preds, targets)
             loss = pos_loss + neg_loss
@@ -253,14 +261,16 @@ def trainer_for_ablation(
             optimizer.step()
             train_loss.append(loss.item())
             iter_counter += 1
-            # optimize alpha for every x iteration
-            lik_list.append(
-                pos_loss.item() * opt["lik_pos_ratio"] + neg_loss.item() * opt["lik_neg_ratio"] + optimizer.regularization_term())
+
+            if opt["model_name"] == "MDL_WIPS":
+                lik_list.append(
+                    pos_loss.item() * opt["lik_pos_ratio"] + neg_loss.item() * opt["lik_neg_ratio"] + optimizer.regularization_term())
             # uLNML_list.append(pos_loss.item() * opt["lik_pos_ratio"] + neg_loss.item() *
             #                   opt["lik_neg_ratio"] + optimizer.upper_bound_on_PC().item())
             # uLNML.append(optimizer.upper_bound_on_PC().item())
 
-            if iter_counter % 10000 == 0:
+            # optimize alpha for every x iteration
+            if opt["model_name"] == "MDL_WIPS" and iter_counter % 10000 == 0:
                 optimizer.optimize_alpha()
 
             # evaluate validation and test for each "eval_each" iterations.
@@ -276,7 +286,7 @@ def trainer_for_ablation(
                 # model, dataset.neighbor_train, dataset.neighbor_valid,
                 # dataset.neighbor_test, dataset.task, log, opt["neproc"],
                 # cuda, True)
-                if opt["task"]=="nodeclf":
+                if opt["task"] == "nodeclf":
                     ROCAUC_train, ROCAUC_valid, ROCAUC_test, eval_elapsed = evaluation_classification(
                         model,
                         labels,
@@ -307,10 +317,18 @@ def trainer_for_ablation(
                 #     max_ROCAUC_model_embed = embeds
                 #     max_ROCAUC_model_on_test = ROCAUC_test
 
-                ips_weight = model.get_ips_weight()
-                sparsity = np.sum(ips_weight == 0) / len(ips_weight)
+                if opt["model_name"] == "MDL_WIPS":
+                    ips_weight = model.get_ips_weight()
+                    sparsity = np.sum(ips_weight == 0) / len(ips_weight)
+                else:
+                    sparsity = 0
 
-                if sparsity > required_sparsity and ROCAUC_valid > max_ROCAUC[0]:
+                ROCAUC_train_list.append(ROCAUC_train)
+                ROCAUC_valid_list.append(ROCAUC_valid)
+                ROCAUC_test_list.append(ROCAUC_test)
+                sparsity_list.append(sparsity)
+
+                if sparsity >= required_sparsity and ROCAUC_valid > max_ROCAUC[0]:
                     max_ROCAUC = (ROCAUC_valid, iter_counter)
                     max_ROCAUC_model = deepcopy(model.state_dict())
                     embeds = model.embed()
@@ -378,7 +396,11 @@ def trainer_for_ablation(
                     'best_rocauc_valid_test': max_ROCAUC_model_on_test,
                     'best_rocauc_valid_iteration': max_ROCAUC[1],
                     'total_iteration': iter_counter,
-                    'opt': opt
+                    'opt': opt,
+                    'rocauc_train_list': ROCAUC_train_list,
+                    'rocauc_valid_list': ROCAUC_valid_list,
+                    'rocauc_test_list': ROCAUC_test_list,
+                    'sparsity_list': sparsity_list
                 }, f'{opt["save_dir"]}/{opt["exp_name"]}.pth')
                 sys.exit()
 
@@ -532,7 +554,6 @@ def evaluation_classification(
         log.info("WIPS's ips weight's ratio : pos {}, zero {}, neg {}".format(
             np.sum(ips_weight > 0), np.sum(ips_weight == 0), np.sum(ips_weight < 0)))
 
-
     embeds = model.embed()[0]
 
     train_embeds = embeds[train_ids, :]
@@ -544,7 +565,7 @@ def evaluation_classification(
     test_labels = labels[test_ids]
 
     # lr = LogisticRegression(max_iter=10000, C=1e5)
-    lr = LogisticRegressionCV(cv=5, max_iter=10000)
+    lr = LogisticRegressionCV(cv=5, max_iter=10000, n_jobs=5)
     # lr = lr.fit(embeds, labels)
     lr.fit(train_embeds, train_labels)
     # print(lr.predict(train_embeds))
@@ -608,7 +629,9 @@ def evaluation_classification(
     # f1_micro_train = f1_score(
     #     y_true=train_labels[:int(len(train_embeds) * 0.8)], y_pred=lr.predict(train_embeds[:int(len(train_embeds) * 0.8)]), average="micro")
     # f1_macro_train = f1_score(
-    #     y_true=train_labels[:int(len(train_embeds) * 0.8)], y_pred=lr.predict(train_embeds[:int(len(train_embeds) * 0.8)]), average="macro")
+    # y_true=train_labels[:int(len(train_embeds) * 0.8)],
+    # y_pred=lr.predict(train_embeds[:int(len(train_embeds) * 0.8)]),
+    # average="macro")
 
     # f1_micro_test = f1_score(
     #     y_true=train_labels[int(len(train_embeds) * 0.8):], y_pred=lr.predict(train_embeds[int(len(train_embeds) * 0.8):]), average="micro")

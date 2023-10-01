@@ -140,7 +140,8 @@ class Embedding(nn.Module):
         )
         self.U = nn.Linear(
             opt["hidden_size"],
-            opt["parameter_num"]
+            opt["parameter_num"],
+            bias=False
         )
 
     def initialization(self):
@@ -165,10 +166,10 @@ class Embedding(nn.Module):
                 raise Exception(name)
 
     def build_NN(self, given_data_vectors, hidden_layer_num, hidden_size):
-        NN = [("fc0", nn.Linear(given_data_vectors.shape[1], hidden_size))]
+        NN = [("fc0", nn.Linear(given_data_vectors.shape[1], hidden_size, bias=False))]
         for i in range(1, hidden_layer_num):
-            NN.extend([(f"relu{i-1}", nn.ReLU(True)), (f"fc{i}", nn.Linear(hidden_size, hidden_size))])
-        NN.append((f"relu{hidden_layer_num-1}", nn.ReLU(True)))
+            NN.extend([(f"tanh{i-1}", nn.Tanh(True)), (f"fc{i}", nn.Linear(hidden_size, hidden_size))])
+        NN.append((f"tanh{hidden_layer_num-1}", nn.Tanh()))
         # print(NN)
         return nn.Sequential(OrderedDict(NN))
 
@@ -304,8 +305,6 @@ class NPD(Embedding):
     Based on the implementation of Poincaré Embedding : https://github.com/facebookresearch/poincare-embeddings
     """
 
-    eps = 1e-5
-
     def __init__(self, opt):
         super(NPD, self).__init__(opt)
         self.dist = PDF
@@ -321,9 +320,15 @@ class NPD(Embedding):
 
     def distfn(self, input):
         s, o = input
-        return self.dist()(s, o)
+        print(self.dist)
+        print(self.dist())        
+        # return self.dist()(s, o)
+        return self.dist(s, o)
 
+    # @staticmethod
     def forward(self, inputs):
+    # def forward(inputs):
+        eps = 1e-5
         e = self.U(self.U_NN(self.data_vectors(inputs)))
         n = torch.norm(e, p=2, dim=2)
         mask = (n >= 1.0)
@@ -337,6 +342,7 @@ class NPD(Embedding):
         return -dists
 
     def embed(self):
+        eps = 1e-5
         e = self.U(self.U_NN(self.data_vectors.state_dict()['weight']))
         n = torch.norm(e, p=2, dim=1)
         mask = (n >= 1.0)
@@ -346,15 +352,15 @@ class NPD(Embedding):
         e = e.clone() / f.unsqueeze(1)
         return [e.data.cpu().numpy()]
 
-
 class PDF(Function):
     """ Poincaré Distance Function
     Based on the implementation of Poincaré Embedding : https://github.com/facebookresearch/poincare-embeddings
     """
 
-    eps = 1e-5
+    @staticmethod
+    def grad(x, v, sqnormx, sqnormv, sqdist):
+        eps = 1e-5
 
-    def grad(self, x, v, sqnormx, sqnormv, sqdist):
         alpha = (1 - sqnormx)
         beta = (1 - sqnormv)
         z = 1 + 2 * sqdist / (alpha * beta)
@@ -362,21 +368,62 @@ class PDF(Function):
              torch.pow(alpha, 2)).unsqueeze(-1).expand_as(x)
         a = a * x - v / alpha.unsqueeze(-1).expand_as(v)
         z = torch.sqrt(torch.pow(z, 2) - 1)
-        z = torch.clamp(z * beta, min=self.eps).unsqueeze(-1)
+        z = torch.clamp(z * beta, min=eps).unsqueeze(-1)
         return 4 * a / z.expand_as(x)
 
-    def forward(self, u, v):
-        self.save_for_backward(u, v)
-        self.squnorm = torch.clamp(torch.sum(u * u, dim=-1), 0, 1 - self.eps)
-        self.sqvnorm = torch.clamp(torch.sum(v * v, dim=-1), 0, 1 - self.eps)
-        self.sqdist = torch.sum(torch.pow(u - v, 2), dim=-1)
-        x = self.sqdist / ((1 - self.squnorm) * (1 - self.sqvnorm)) * 2 + 1
+    @staticmethod
+    def forward(ctx, u, v):
+        eps = 1e-5
+        ctx.save_for_backward(u, v)
+        squnorm = torch.clamp(torch.sum(u * u, dim=-1), 0, 1 - eps)
+        sqvnorm = torch.clamp(torch.sum(v * v, dim=-1), 0, 1 - eps)
+        sqdist = torch.sum(torch.pow(u - v, 2), dim=-1)
+        x = sqdist / ((1 - squnorm) * (1 - sqvnorm)) * 2 + 1
         z = torch.sqrt(torch.pow(x, 2) - 1)
         return torch.log(x + z)
 
-    def backward(self, g):
-        u, v = self.saved_tensors
+    @staticmethod
+    def backward(ctx, g):
+        u, v = ctx.saved_tensors
         g = g.unsqueeze(-1)
-        gu = self.grad(u, v, self.squnorm, self.sqvnorm, self.sqdist)
-        gv = self.grad(v, u, self.sqvnorm, self.squnorm, self.sqdist)
+        gu = PDF.grad(u, v, ctx.squnorm, ctx.sqvnorm, ctx.sqdist)
+        gv = PDF.grad(v, u, ctx.sqvnorm, ctx.squnorm, ctx.sqdist)
         return g.expand_as(gu) * gu, g.expand_as(gv) * gv
+
+# class PDF(Function):
+#     """ Poincaré Distance Function
+#     Based on the implementation of Poincaré Embedding : https://github.com/facebookresearch/poincare-embeddings
+#     """
+
+#     # @staticmethod
+#     def grad(self, x, v, sqnormx, sqnormv, sqdist):
+#         eps = 1e-5
+
+#         alpha = (1 - sqnormx)
+#         beta = (1 - sqnormv)
+#         z = 1 + 2 * sqdist / (alpha * beta)
+#         a = ((sqnormv - 2 * torch.sum(x * v, dim=-1) + 1) /
+#              torch.pow(alpha, 2)).unsqueeze(-1).expand_as(x)
+#         a = a * x - v / alpha.unsqueeze(-1).expand_as(v)
+#         z = torch.sqrt(torch.pow(z, 2) - 1)
+#         z = torch.clamp(z * beta, min=eps).unsqueeze(-1)
+#         return 4 * a / z.expand_as(x)
+
+#     # @staticmethod
+#     def forward(self, u, v):
+#         eps = 1e-5
+#         self.save_for_backward(u, v)
+#         self.squnorm = torch.clamp(torch.sum(u * u, dim=-1), 0, 1 - eps)
+#         self.sqvnorm = torch.clamp(torch.sum(v * v, dim=-1), 0, 1 - eps)
+#         self.sqdist = torch.sum(torch.pow(u - v, 2), dim=-1)
+#         x = self.sqdist / ((1 - self.squnorm) * (1 - self.sqvnorm)) * 2 + 1
+#         z = torch.sqrt(torch.pow(x, 2) - 1)
+#         return torch.log(x + z)
+
+#     # @staticmethod
+#     def backward(self, g):
+#         u, v = self.saved_tensors
+#         g = g.unsqueeze(-1)
+#         gu = self.grad(u, v, self.squnorm, self.sqvnorm, self.sqdist)
+#         gv = self.grad(v, u, self.sqvnorm, self.squnorm, self.sqdist)
+#         return g.expand_as(gu) * gu, g.expand_as(gv) * gv

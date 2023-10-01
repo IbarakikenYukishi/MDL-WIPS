@@ -218,21 +218,25 @@ def main():
         n_dim_d=opt.data_vectors.shape[1],
     )
 
-    if 
-    optimizer = train.ProxSGD(
-        params=filtered_parameters,
-        # lr=opt.init_lr * opt.batchsize,
-        lr=opt.init_lr,
-        log_h_prime=log_h_prime,
-        batchsize=opt.batchsize,
-        M=10000.0,
-        lambda_max=10000.0,
-        n_nodes=dataset.train_node_num,
-        n_dim_e=opt.parameter_num,
-        n_dim_m=opt.hidden_size,
-        n_dim_d=opt.data_vectors.shape[1],
-        device=opt.cuda
-    )
+    if opt.model_name=="MDL_WIPS":
+        optimizer = train.ProxSGD(
+            params=filtered_parameters,
+            lr=opt.init_lr,
+            log_h_prime=log_h_prime,
+            batchsize=opt.batchsize,
+            M=10000.0,
+            lambda_max=10000.0,
+            n_nodes=dataset.train_node_num,
+            n_dim_e=opt.parameter_num,
+            n_dim_m=opt.hidden_size,
+            n_dim_d=opt.data_vectors.shape[1],
+            device=opt.cuda
+        )
+    else:
+        optimizer = Adam(
+            filtered_parameters,
+            lr=opt.init_lr
+        )
 
     # train the model
     train.trainer_for_ablation(
@@ -243,7 +247,6 @@ def main():
         opt.__dict__,
         log,
         opt.cuda,
-        # node_clf=True,
         labels=labels,
     )
 
