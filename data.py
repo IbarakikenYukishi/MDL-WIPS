@@ -9,6 +9,7 @@ from torch.utils.data import Dataset, Sampler
 from sklearn.model_selection import train_test_split
 from gensim.models import KeyedVectors
 from utils import load_data3
+import sys
 
 
 class EdgeSampler(Sampler):
@@ -226,6 +227,8 @@ class GraphDataset(Dataset):
             # None for validation and test
             self.neighbor_valid = None
             self.neighbor_test = None
+            # print(len(self.neighbor_train))
+            # print(self.train_node_num)
             assert len(self.neighbor_train) == self.train_node_num
 
         # else:
@@ -408,6 +411,174 @@ def preprocess_co_author_network(dir_path, undirect=True, seed=0):
 
     return author2id, id2freq, edges2freq, vectors
 
+# from torch_geometric.io import read_npz
+
+# import os.path as osp
+# from typing import Callable, Optional
+
+# import torch
+
+# from torch_geometric.data import InMemoryDataset, download_url
+# from torch_geometric.io import read_npz
+
+
+# class Amazon(InMemoryDataset):
+#     r"""The Amazon Computers and Amazon Photo networks from the
+#     `"Pitfalls of Graph Neural Network Evaluation"
+#     <https://arxiv.org/abs/1811.05868>`_ paper.
+#     Nodes represent goods and edges represent that two goods are frequently
+#     bought together.
+#     Given product reviews as bag-of-words node features, the task is to
+#     map goods to their respective product category.
+
+#     Args:
+#         root (str): Root directory where the dataset should be saved.
+#         name (str): The name of the dataset (:obj:`"Computers"`,
+#             :obj:`"Photo"`).
+#         transform (callable, optional): A function/transform that takes in an
+#             :obj:`torch_geometric.data.Data` object and returns a transformed
+#             version. The data object will be transformed before every access.
+#             (default: :obj:`None`)
+#         pre_transform (callable, optional): A function/transform that takes in
+#             an :obj:`torch_geometric.data.Data` object and returns a
+#             transformed version. The data object will be transformed before
+#             being saved to disk. (default: :obj:`None`)
+
+#     **STATS:**
+
+#     .. list-table::
+#         :widths: 10 10 10 10 10
+#         :header-rows: 1
+
+#         * - Name
+#           - #nodes
+#           - #edges
+#           - #features
+#           - #classes
+#         * - Computers
+#           - 13,752
+#           - 491,722
+#           - 767
+#           - 10
+#         * - Photo
+#           - 7,650
+#           - 238,162
+#           - 745
+#           - 8
+#     """
+
+#     url = 'https://github.com/shchur/gnn-benchmark/raw/master/data/npz/'
+
+#     def __init__(
+#         self,
+#         root: str,
+#         name: str,
+#         transform: Optional[Callable] = None,
+#         pre_transform: Optional[Callable] = None,
+#     ):
+#         self.name = name.lower()
+#         assert self.name in ['computers', 'photo']
+#         super().__init__(root, transform, pre_transform)
+#         self.data, self.slices = torch.load(self.processed_paths[0])
+
+#     @property
+#     def raw_dir(self) -> str:
+#         return osp.join(self.root, self.name.capitalize(), 'raw')
+
+#     @property
+#     def processed_dir(self) -> str:
+#         return osp.join(self.root, self.name.capitalize(), 'processed')
+
+#     @property
+#     def raw_file_names(self) -> str:
+#         return f'amazon_electronics_{self.name.lower()}.npz'
+
+#     @property
+#     def processed_file_names(self) -> str:
+#         return 'data.pt'
+
+#     def download(self):
+#         download_url(self.url + self.raw_file_names, self.raw_dir)
+
+#     def process(self):
+#         # data = read_npz(self.raw_paths[0], to_undirected=True)
+#         data = read_npz(self.raw_paths[0])
+#         data = data if self.pre_transform is None else self.pre_transform(data)
+#         data, slices = self.collate([data])
+#         torch.save((data, slices), self.processed_paths[0])
+
+#     def __repr__(self) -> str:
+#         return f'{self.__class__.__name__}{self.name.capitalize()}()'
+
+# def preprocess_amazon(
+#     dir_path
+# ):
+#     dataset = read_npz("data/amazon_electronics_photo.npz")
+#     # dataset = np.load("data/amazon_electronics_photo.npz")
+#     # print(dataset)
+#     # print(dataset.x)
+#     # print(dataset.y)
+#     # print(dataset.edge_index)
+
+#     features = dataset.x.numpy()
+#     labels = dataset.y.numpy()
+
+#     node2id = {}
+#     id2freq = {}
+#     edges2freq = {}
+
+#     n = dataset.x.shape[0]
+
+#     for i in range(n):
+#         node2id[str(i)] = i
+#         id2freq[i] = 0
+#         # id2freq[i] = freq[i]
+
+
+#     for e in dataset.edge_index.numpy().T:
+#         id2freq[e[0]] += 1
+#         id2freq[e[1]] += 1
+#         if e[0] < e[1]:
+#             edges2freq[(e[0], e[1])] = 1
+#         else:
+#             edges2freq[(e[1], e[0])] = 1
+
+#     # print(node2id)
+#     # print(id2freq)
+#     # print(edges2freq)
+#     # print(labels)
+#     # print(features)
+
+#     # dataset = Amazon("data", "photo")
+#     # print(dataset)
+
+#     print(f"""Node num : {len(node2id)},
+#     Node frequency max :{np.max(list(id2freq.values()))} min :{np.min(list(id2freq.values()))} mean :{np.mean(list(id2freq.values()))},
+#     Edge num : {len(edges2freq)},
+#     Edge frequency max :{np.max(list(edges2freq.values()))} min :{np.min(list(edges2freq.values()))} mean :{np.mean(list(edges2freq.values()))}""")
+
+#     # print(set(labels))
+
+#     # return node2id, id2freq, edges2freq, features, labels
+
+def preprocess_amazon(
+    dir_path
+):
+
+    node2id = np.load("data/amazon_electronics_photo_node2id.npy", allow_pickle=True).item()
+    id2freq = np.load("data/amazon_electronics_photo_id2freq.npy", allow_pickle=True).item()
+    edges2freq = np.load("data/amazon_electronics_photo_edges2freq.npy", allow_pickle=True).item()
+    features = np.load("data/amazon_electronics_photo_features.npy", allow_pickle=True)
+    labels = np.load("data/amazon_electronics_photo_labels.npy", allow_pickle=True)
+
+
+    print(f"""Node num : {len(node2id)},
+    Node frequency max :{np.max(list(id2freq.values()))} min :{np.min(list(id2freq.values()))} mean :{np.mean(list(id2freq.values()))},
+    Edge num : {len(edges2freq)},
+    Edge frequency max :{np.max(list(edges2freq.values()))} min :{np.min(list(edges2freq.values()))} mean :{np.mean(list(edges2freq.values()))}""")
+
+    return node2id, id2freq, edges2freq, features, labels
+
 
 def preprocess_citeseer(dir_path):
     adj, features, y_train, y_val, y_test, train_mask, val_mask, test_mask, labels = load_data3(
@@ -453,6 +624,49 @@ def preprocess_citeseer(dir_path):
     return node2id, id2freq, edges2freq, features, labels
 
 
+# def preprocess_pubmed(dir_path):
+#     adj, features, y_train, y_val, y_test, train_mask, val_mask, test_mask, labels = load_data3(
+#         dir_path, 'pubmed')
+#     adj = adj.toarray().astype(float)
+
+#     # ラベルがついていないものはとりのぞく
+#     idx_with_label = np.where(labels)[0]
+
+#     labels = labels[idx_with_label]
+#     labels = np.where(labels)[1]
+
+#     features = features[idx_with_label]
+#     adj = adj[idx_with_label, :][:, idx_with_label]
+
+#     features = features.numpy()
+
+#     # for input data
+#     node2id = {}
+#     id2freq = {}
+#     edges2freq = {}
+
+#     n = adj.shape[0]
+#     freq = np.sum(adj, axis=1)
+
+#     for i in range(n):
+#         node2id[str(i)] = i
+#         id2freq[i] = freq[i]
+
+#     adj = np.triu(adj)
+
+#     for e in np.array(np.where(adj == 1)).T:
+#         if e[0] < e[1]:
+#             edges2freq[(e[0], e[1])] = 1
+#         else:
+#             edges2freq[(e[1], e[0])] = 1
+
+#     print(f"""Node num : {len(node2id)},
+#     Node frequency max :{np.max(list(id2freq.values()))} min :{np.min(list(id2freq.values()))} mean :{np.mean(list(id2freq.values()))},
+#     Edge num : {len(edges2freq)},
+#     Edge frequency max :{np.max(list(edges2freq.values()))} min :{np.min(list(edges2freq.values()))} mean :{np.mean(list(edges2freq.values()))}""")
+
+#     return node2id, id2freq, edges2freq, features, labels
+
 def preprocess_pubmed(dir_path):
     adj, features, y_train, y_val, y_test, train_mask, val_mask, test_mask, labels = load_data3(
         dir_path, 'pubmed')
@@ -460,6 +674,7 @@ def preprocess_pubmed(dir_path):
 
     # ラベルがついていないものはとりのぞく
     idx_with_label = np.where(labels)[0]
+    idx_with_label = idx_with_label[:int(len(idx_with_label)*0.4)]
 
     labels = labels[idx_with_label]
     labels = np.where(labels)[1]
@@ -468,6 +683,8 @@ def preprocess_pubmed(dir_path):
     adj = adj[idx_with_label, :][:, idx_with_label]
 
     features = features.numpy()
+
+    # print(set(labels))
 
     # for input data
     node2id = {}
@@ -494,8 +711,9 @@ def preprocess_pubmed(dir_path):
     Edge num : {len(edges2freq)},
     Edge frequency max :{np.max(list(edges2freq.values()))} min :{np.min(list(edges2freq.values()))} mean :{np.mean(list(edges2freq.values()))}""")
 
-    return node2id, id2freq, edges2freq, features, labels
+    # sys.exit()
 
+    return node2id, id2freq, edges2freq, features, labels
 
 def preprocess_cora(dir_path):
     all_data = []

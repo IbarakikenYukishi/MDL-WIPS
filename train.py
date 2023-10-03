@@ -228,16 +228,17 @@ def trainer_for_ablation(
     assert opt["iter"] % opt["eval_each"] == 0
     pbar = tqdm(total=opt["eval_each"])
 
+    lik_list = []
+    ROCAUC_train_list = []
+    ROCAUC_valid_list = []
+    ROCAUC_test_list = []
+    sparsity_list = []
+
     while True:
         train_loss = []
         loss = None
         # uLNML_list = []
-        lik_list = []
 
-        ROCAUC_train_list = []
-        ROCAUC_valid_list = []
-        ROCAUC_test_list = []
-        sparsity_list = []
 
         for inputs, targets in loader:
             pbar.update(1)
@@ -327,6 +328,11 @@ def trainer_for_ablation(
                 ROCAUC_valid_list.append(ROCAUC_valid)
                 ROCAUC_test_list.append(ROCAUC_test)
                 sparsity_list.append(sparsity)
+
+                print(ROCAUC_train_list)
+                print(ROCAUC_valid_list)
+                print(ROCAUC_test_list)
+                print(sparsity_list)
 
                 if sparsity >= required_sparsity and ROCAUC_valid > max_ROCAUC[0]:
                     max_ROCAUC = (ROCAUC_valid, iter_counter)

@@ -63,6 +63,7 @@ def comparison(
     init_lr_list,
     neg_ratios
 ):
+
     print(dataset_name)
     print(task)
     print(n_dim_e)
@@ -70,6 +71,29 @@ def comparison(
         print(model)
         prefix = path + "/comparison_" + model + "_" + task + "_" + dataset_name
         if model == "MDL_WIPS":
+            # best_effective_dim = 0
+            # best_AUC_valid = -1
+            # best_AUC_test = -1
+            # best_lr = 0
+            # best_iter = 0
+            # for init_lr in init_lr_list:
+            #     filepath = prefix + "_" + \
+            #         str(n_dim_e) + "_" + str(init_lr) + ".pth"
+            #     data = torch.load(filepath)
+            #     ips_weight = data["best_rocauc_model"][
+            #         "ips_weight"].data.cpu().numpy()
+            #     effective_dim = np.sum(ips_weight != 0)
+            #     AUC_valid = data["best_rocauc_valid"]
+            #     AUC_test = data["best_rocauc_valid_test"]
+            #     if AUC_valid > best_AUC_valid:
+            #         best_AUC_valid = AUC_valid
+            #         best_AUC_test = AUC_test
+            #         best_effective_dim = effective_dim
+            #         best_lr = init_lr
+            #         best_iter = data["best_rocauc_valid_iteration"]
+            # print("n_dim_e:", n_dim_e, best_lr, best_iter)
+            # print("effective_dim:", best_effective_dim)
+            # print("AUC:", best_AUC_test)
             best_effective_dim = 0
             best_AUC_valid = -1
             best_AUC_test = -1
@@ -78,19 +102,55 @@ def comparison(
             for init_lr in init_lr_list:
                 filepath = prefix + "_" + \
                     str(n_dim_e) + "_" + str(init_lr) + ".pth"
+
                 data = torch.load(filepath)
-                ips_weight = data["best_rocauc_model"][
-                    "ips_weight"].data.cpu().numpy()
-                effective_dim = np.sum(ips_weight != 0)
-                AUC_valid = data["best_rocauc_valid"]
-                AUC_test = data["best_rocauc_valid_test"]
+                # ROCAUC_train_list = data["rocauc_train_list"]
+                ROCAUC_valid_list = np.array(data["rocauc_valid_list"])
+                ROCAUC_test_list = np.array(data["rocauc_test_list"])
+                sparsity_list = np.array(data["sparsity_list"])
+
+                print(max(ROCAUC_test_list))
+
+                required_sparsity = 0.4
+                # required_sparsity = -0.1
+
+                idx_sparse = np.where(sparsity_list >= required_sparsity)[0]
+                # print(idx_sparse)
+                # print(sparsity_list)
+                # ROCAUC_train_list = ROCAUC_train_list[idx]
+                ROCAUC_valid_list = ROCAUC_valid_list[idx_sparse]
+                ROCAUC_test_list = ROCAUC_test_list[idx_sparse]
+                sparsity_list = sparsity_list[idx_sparse]
+
+                if len(sparsity_list) != 0:
+                    idx = np.argmax(ROCAUC_valid_list)
+                    AUC_valid = ROCAUC_valid_list[idx]
+                    AUC_test = ROCAUC_test_list[idx]
+                    effective_dim = int((1 - sparsity_list[idx]) * n_dim_e)
+                else:
+                    AUC_valid = -1
+                    AUC_test = -1
+                    effective_dim = 0
+
+                # print(data)
+                # print(data["rocauc_train_list"])
+                # print(data["rocauc_valid_list"])
+                # print(data["rocauc_test_list"])
+                # print(data["sparsity_list"])
+
+                # ips_weight = data["best_rocauc_model"][
+                #     "ips_weight"].data.cpu().numpy()
+                # effective_dim = np.sum(ips_weight != 0)
+                # AUC_valid = data["best_rocauc_valid"]
+                # AUC_test = data["best_rocauc_valid_test"]
                 if AUC_valid > best_AUC_valid:
                     best_AUC_valid = AUC_valid
                     best_AUC_test = AUC_test
                     best_effective_dim = effective_dim
-                    best_lr = init_lr
-                    best_iter = data["best_rocauc_valid_iteration"]
-            print("n_dim_e:", n_dim_e, best_lr, best_iter)
+                    # best_lr = init_lr
+                    # best_iter = data["best_rocauc_valid_iteration"]
+            # print("n_dim_e:", n_dim_e, best_lr, best_iter)
+            print("n_dim_e:", n_dim_e)
             print("effective_dim:", best_effective_dim)
             print("AUC:", best_AUC_test)
         elif model == "IPDS":
@@ -136,12 +196,15 @@ def comparison(
 
 
 if __name__ == '__main__':
+    models = ["IPS", "SIPS", "IPDS", "WIPS", "MDL_WIPS"]
+    # models = ["MDL_WIPS"]
+    print("n_dim_e = 100")
     comparison(
         path="results",
         dataset_name="webkb",
         n_dim_e=100,
         task="linkpred",
-        models=["IPS", "SIPS", "WIPS", "IPDS", "MDL_WIPS"],
+        models=models,
         init_lr_list=[0.4, 0.8, 1.6],
         neg_ratios=[0.01, 0.25, 0.50, 0.75, 0.99]
     )
@@ -150,7 +213,7 @@ if __name__ == '__main__':
         dataset_name="cora",
         n_dim_e=100,
         task="linkpred",
-        models=["IPS", "SIPS", "WIPS", "IPDS", "MDL_WIPS"],
+        models=models,
         init_lr_list=[0.4, 0.8, 1.6],
         neg_ratios=[0.01, 0.25, 0.50, 0.75, 0.99]
     )
@@ -159,34 +222,89 @@ if __name__ == '__main__':
         dataset_name="citeseer",
         n_dim_e=100,
         task="linkpred",
-        models=["IPS", "SIPS", "WIPS", "IPDS", "MDL_WIPS"],
+        models=models,
+        init_lr_list=[0.4, 0.8, 1.6],
+        neg_ratios=[0.01, 0.25, 0.50, 0.75, 0.99]
+    )
+    comparison(
+        path="results",
+        dataset_name="amazon",
+        n_dim_e=100,
+        task="linkpred",
+        models=models,
+        init_lr_list=[0.4, 0.8, 1.6],
+        neg_ratios=[0.01, 0.25, 0.50, 0.75, 0.99]
+    )
+    comparison(
+        path="results",
+        dataset_name="webkb",
+        n_dim_e=100,
+        task="nodeclf",
+        models=models,
+        init_lr_list=[0.4, 0.8, 1.6],
+        neg_ratios=[0.01, 0.25, 0.50, 0.75, 0.99]
+    )
+    comparison(
+        path="results",
+        dataset_name="cora",
+        n_dim_e=100,
+        task="nodeclf",
+        models=models,
+        init_lr_list=[0.4, 0.8, 1.6],
+        neg_ratios=[0.01, 0.25, 0.50, 0.75, 0.99]
+    )
+    comparison(
+        path="results",
+        dataset_name="citeseer",
+        n_dim_e=100,
+        task="nodeclf",
+        models=models,
         init_lr_list=[0.4, 0.8, 1.6],
         neg_ratios=[0.01, 0.25, 0.50, 0.75, 0.99]
     )
     # comparison(
     #     path="results",
-    #     dataset_name="webkb",
+    #     dataset_name="amazon",
     #     n_dim_e=100,
     #     task="nodeclf",
-    #     models=["IPS", "SIPS", "WIPS", "IPDS", "MDL_WIPS"],
+    #     models=models,
     #     init_lr_list=[0.4, 0.8, 1.6],
     #     neg_ratios=[0.01, 0.25, 0.50, 0.75, 0.99]
     # )
+    print("n_dim_e = 200")
+    comparison(
+        path="results",
+        dataset_name="webkb",
+        n_dim_e=200,
+        task="linkpred",
+        models=models,
+        init_lr_list=[0.4, 0.8, 1.6],
+        neg_ratios=[0.01, 0.25, 0.50, 0.75, 0.99]
+    )
     comparison(
         path="results",
         dataset_name="cora",
-        n_dim_e=100,
-        task="nodeclf",
-        models=["IPS", "SIPS", "WIPS", "IPDS", "MDL_WIPS"],
+        n_dim_e=200,
+        task="linkpred",
+        models=models,
         init_lr_list=[0.4, 0.8, 1.6],
         neg_ratios=[0.01, 0.25, 0.50, 0.75, 0.99]
     )
     comparison(
         path="results",
         dataset_name="citeseer",
-        n_dim_e=100,
-        task="nodeclf",
-        models=["IPS", "SIPS", "WIPS", "IPDS", "MDL_WIPS"],
+        n_dim_e=200,
+        task="linkpred",
+        models=models,
+        init_lr_list=[0.4, 0.8, 1.6],
+        neg_ratios=[0.01, 0.25, 0.50, 0.75, 0.99]
+    )
+    comparison(
+        path="results",
+        dataset_name="amazon",
+        n_dim_e=200,
+        task="linkpred",
+        models=models,
         init_lr_list=[0.4, 0.8, 1.6],
         neg_ratios=[0.01, 0.25, 0.50, 0.75, 0.99]
     )
@@ -194,29 +312,111 @@ if __name__ == '__main__':
         path="results",
         dataset_name="webkb",
         n_dim_e=200,
-        task="linkpred",
-        models=["IPS", "SIPS", "WIPS", "IPDS", "MDL_WIPS"],
+        task="nodeclf",
+        models=models,
+        init_lr_list=[0.4, 0.8, 1.6],
+        neg_ratios=[0.01, 0.25, 0.50, 0.75, 0.99]
+    )
+    comparison(
+        path="results",
+        dataset_name="cora",
+        n_dim_e=200,
+        task="nodeclf",
+        models=models,
+        init_lr_list=[0.4, 0.8, 1.6],
+        neg_ratios=[0.01, 0.25, 0.50, 0.75, 0.99]
+    )
+    comparison(
+        path="results",
+        dataset_name="citeseer",
+        n_dim_e=200,
+        task="nodeclf",
+        models=models,
         init_lr_list=[0.4, 0.8, 1.6],
         neg_ratios=[0.01, 0.25, 0.50, 0.75, 0.99]
     )
     # comparison(
     #     path="results",
-    #     dataset_name="cora",
+    #     dataset_name="amazon",
     #     n_dim_e=200,
-    #     task="linkpred",
-    #     models=["IPS", "SIPS", "WIPS", "IPDS", "MDL_WIPS"],
+    #     task="nodeclf",
+    #     models=models,
     #     init_lr_list=[0.4, 0.8, 1.6],
     #     neg_ratios=[0.01, 0.25, 0.50, 0.75, 0.99]
     # )
+    print("n_dim_e = 300")
     comparison(
         path="results",
-        dataset_name="citeseer",
-        n_dim_e=200,
+        dataset_name="webkb",
+        n_dim_e=300,
         task="linkpred",
-        models=["IPS", "SIPS", "WIPS", "IPDS", "MDL_WIPS"],
+        models=models,
         init_lr_list=[0.4, 0.8, 1.6],
         neg_ratios=[0.01, 0.25, 0.50, 0.75, 0.99]
     )
+    comparison(
+        path="results",
+        dataset_name="cora",
+        n_dim_e=300,
+        task="linkpred",
+        models=models,
+        init_lr_list=[0.4, 0.8, 1.6],
+        neg_ratios=[0.01, 0.25, 0.50, 0.75, 0.99]
+    )
+    comparison(
+        path="results",
+        dataset_name="citeseer",
+        n_dim_e=300,
+        task="linkpred",
+        models=models,
+        init_lr_list=[0.4, 0.8, 1.6],
+        neg_ratios=[0.01, 0.25, 0.50, 0.75, 0.99]
+    )
+    comparison(
+        path="results",
+        dataset_name="amazon",
+        n_dim_e=300,
+        task="linkpred",
+        models=models,
+        init_lr_list=[0.4, 0.8, 1.6],
+        neg_ratios=[0.01, 0.25, 0.50, 0.75, 0.99]
+    )
+    comparison(
+        path="results",
+        dataset_name="webkb",
+        n_dim_e=300,
+        task="nodeclf",
+        models=models,
+        init_lr_list=[0.4, 0.8, 1.6],
+        neg_ratios=[0.01, 0.25, 0.50, 0.75, 0.99]
+    )
+    comparison(
+        path="results",
+        dataset_name="cora",
+        n_dim_e=300,
+        task="nodeclf",
+        models=models,
+        init_lr_list=[0.4, 0.8, 1.6],
+        neg_ratios=[0.01, 0.25, 0.50, 0.75, 0.99]
+    )
+    comparison(
+        path="results",
+        dataset_name="citeseer",
+        n_dim_e=300,
+        task="nodeclf",
+        models=models,
+        init_lr_list=[0.4, 0.8, 1.6],
+        neg_ratios=[0.01, 0.25, 0.50, 0.75, 0.99]
+    )
+    # comparison(
+    #     path="results",
+    #     dataset_name="amazon",
+    #     n_dim_e=300,
+    #     task="nodeclf",
+    #     models=models,
+    #     init_lr_list=[0.4, 0.8, 1.6],
+    #     neg_ratios=[0.01, 0.25, 0.50, 0.75, 0.99]
+    # )
 
     # print("WebKB")
     # ablation_study(
