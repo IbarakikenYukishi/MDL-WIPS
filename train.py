@@ -205,6 +205,8 @@ def trainer_for_ablation(
     required_sparsity=-1,
     node_clf=False,
     labels=None,
+    save_dict=True,
+    optimize_alpha=True
 ):
     # dataloader
     loader = DataLoader(
@@ -217,6 +219,7 @@ def trainer_for_ablation(
     # (maximum ROCAUC, the iteration at which the maximum one was achieved)
     max_ROCAUC = (-1, -1)
     max_ROCAUC_model = None
+    max_ROCAUC_model_ = None
     max_ROCAUC_model_on_test = -1
     max_ROCAUC_model_embed = None
 
@@ -238,7 +241,6 @@ def trainer_for_ablation(
         train_loss = []
         loss = None
         # uLNML_list = []
-
 
         for inputs, targets in loader:
             pbar.update(1)
@@ -263,15 +265,15 @@ def trainer_for_ablation(
             train_loss.append(loss.item())
             iter_counter += 1
 
-            if opt["model_name"] == "MDL_WIPS":
-                lik_list.append(
-                    pos_loss.item() * opt["lik_pos_ratio"] + neg_loss.item() * opt["lik_neg_ratio"] + optimizer.regularization_term())
+            # if opt["model_name"] == "MDL_WIPS":
+            #     lik_list.append(
+            #         pos_loss.item() * opt["lik_pos_ratio"] + neg_loss.item() * opt["lik_neg_ratio"] + optimizer.regularization_term())
             # uLNML_list.append(pos_loss.item() * opt["lik_pos_ratio"] + neg_loss.item() *
             #                   opt["lik_neg_ratio"] + optimizer.upper_bound_on_PC().item())
             # uLNML.append(optimizer.upper_bound_on_PC().item())
 
             # optimize alpha for every x iteration
-            if opt["model_name"] == "MDL_WIPS" and iter_counter % 10000 == 0:
+            if opt["model_name"] == "MDL_WIPS" and optimize_alpha and iter_counter % 10000 == 0:
                 optimizer.optimize_alpha()
 
             # evaluate validation and test for each "eval_each" iterations.
@@ -287,7 +289,7 @@ def trainer_for_ablation(
                 # model, dataset.neighbor_train, dataset.neighbor_valid,
                 # dataset.neighbor_test, dataset.task, log, opt["neproc"],
                 # cuda, True)
-                if opt["task"] == "nodeclf":
+                if opt["task"] == "nodeclf" or opt["task"] == "nodeclf_ind":
                     ROCAUC_train, ROCAUC_valid, ROCAUC_test, eval_elapsed = evaluation_classification(
                         model,
                         labels,
@@ -296,7 +298,7 @@ def trainer_for_ablation(
                         dataset.test_ids,
                         log
                     )
-                else:
+                elif opt["task"] == "linkpred":
                     ROCAUC_train, ROCAUC_valid, ROCAUC_test, eval_elapsed = evaluation(
                         model,
                         dataset.neighbor_train,
@@ -329,14 +331,15 @@ def trainer_for_ablation(
                 ROCAUC_test_list.append(ROCAUC_test)
                 sparsity_list.append(sparsity)
 
-                print(ROCAUC_train_list)
-                print(ROCAUC_valid_list)
-                print(ROCAUC_test_list)
-                print(sparsity_list)
+                # print(ROCAUC_train_list)
+                # print(ROCAUC_valid_list)
+                # print(ROCAUC_test_list)
+                # print(sparsity_list)
 
                 if sparsity >= required_sparsity and ROCAUC_valid > max_ROCAUC[0]:
                     max_ROCAUC = (ROCAUC_valid, iter_counter)
                     max_ROCAUC_model = deepcopy(model.state_dict())
+                    max_ROCAUC_model_ = deepcopy(model)
                     embeds = model.embed()
                     max_ROCAUC_model_embed = embeds
                     max_ROCAUC_model_on_test = ROCAUC_test
@@ -388,15 +391,15 @@ def trainer_for_ablation(
                     )
                 )
 
-                print(""" save the model """)
                 embeds = model.embed()
 
-                torch.save({
+                ret_dict = {
                     'model': model.state_dict(),
                     'node2id': dataset.node2id,
                     'data_vectors': dataset.data_vectors,
                     'embeds_at_final_iteration': embeds,
                     'best_rocauc_model': max_ROCAUC_model,
+                    'best_rocauc_model_': max_ROCAUC_model_,
                     'best_rocauc_valid': max_ROCAUC[0],
                     'best_rocauc_valid_embeds': max_ROCAUC_model_embed,
                     'best_rocauc_valid_test': max_ROCAUC_model_on_test,
@@ -407,8 +410,13 @@ def trainer_for_ablation(
                     'rocauc_valid_list': ROCAUC_valid_list,
                     'rocauc_test_list': ROCAUC_test_list,
                     'sparsity_list': sparsity_list
-                }, f'{opt["save_dir"]}/{opt["exp_name"]}.pth')
-                sys.exit()
+                }
+
+                if save_dict:
+                    print(""" save the model """)
+                    torch.save(ret_dict, f'{opt["save_dir"]}/{opt["exp_name"]}.pth')
+
+                return ret_dict
 
 
 def trainer(
@@ -614,9 +622,9 @@ def evaluation_classification(
     print(f1_micro_valid)
     print(f1_micro_test)
 
-    print(f1_macro_train)
-    print(f1_macro_valid)
-    print(f1_macro_test)
+    # print(f1_macro_train)
+    # print(f1_macro_valid)
+    # print(f1_macro_test)
 
     # print(r_f1_micro_train)
     # print(r_f1_micro_valid)
@@ -663,6 +671,10 @@ def evaluation(
     cuda=False,
     verbose=False
 ):
+    # print(neighbor_train)
+    # print(neighbor_valid)
+    # print(neighbor_test)
+
     t_start = timeit.default_timer()
 
     ips_weight = None
@@ -746,17 +758,21 @@ def eval_thread(neighbor_thread, model, embeds, ips_weight, queue, cuda, verbose
     if verbose:
         bar = tqdm(desc='Eval', total=len(neighbor_thread), mininterval=1,
                    bar_format='{desc}: {percentage:3.0f}% ({remaining} left)')
+    # print(neighbor_thread)
     for _s, s_neighbor in neighbor_thread:
         if verbose:
             bar.update()
         s = torch.tensor(_s)
         target_embeddings = []
+        # print(len(embeds))
         with torch.no_grad():
             for i in range(len(embeds)):
                 target_embeddings.append(
                     Variable(embeds[i][s].expand_as(embeddings[i])))
+        # print(target_embeddings)
         if cuda:
             input_embeddings = target_embeddings + embeddings
+            # print(len(input_embeddings[0]))
             if ips_weight is not None:
                 _dists = model.distfn(
                     input_embeddings, w=ips_weight).data.cpu().numpy().flatten()
@@ -773,6 +789,8 @@ def eval_thread(neighbor_thread, model, embeds, ips_weight, queue, cuda, verbose
                 _dists = model.distfn(input_embeddings).data.numpy().flatten()
             node_num = model.total_node_num
         _dists[s] = 1e+12
+
+        # リンクでつながっているところはlabelを1にする
         _labels = np.zeros(node_num)
         for o in s_neighbor:
             o = torch.tensor(o)

@@ -1,6 +1,5 @@
 #!/bin/bash
 save_dir="results"
-# save_dir="results_test"
 webkb_path="data"
 cora_path="data"
 citeseer_path="data/citeseer"
@@ -8,18 +7,17 @@ amazon_path="data"
 pubmed_path="data/pubmed"
 
 device=0
-n_devices=3
-# n_devices=4
 
 # 引数の数を確認
-if [ "$#" -ne 3 ]; then
-  echo "# of arguments should be three. The parameter num., graph type, and task."
+if [ "$#" -ne 4 ]; then
+  echo "# of arguments should be four, parameter_num, graph_type, task, and n_devices."
   exit 1
 fi
 
 parameter_num=${1}
 graph_type=${2}
 task=${3}
+n_devices=${4}
 
 hidden_size=1000
 

@@ -167,7 +167,7 @@ def main():
     # print(id2freq)
 
     # edgeのペアのfrequency?
-    # print(edges2freq)
+    # print(len(edges2freq))
 
     # vectors: GraphDatasetに使う。reconstの場合はdata vectorになり、link
     # predictionの場合は何らかの処理を加え、data vectorの元になる。

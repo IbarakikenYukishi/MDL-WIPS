@@ -76,13 +76,13 @@ class GraphDataset(Dataset):
         task="reconst",
         seed=0
     ):
-        assert task in ["reconst", "linkpred", "nodeclf"]
+        assert task in ["reconst", "linkpred", "nodeclf", "nodeclf_ind"]
 
         self.smoothing_rate_for_node = smoothing_rate_for_node
         self.nnegs = nnegs
         self.task = task
 
-        if task == "linkpred":
+        if task == "linkpred" or task == "nodeclf_ind":
             assert data_vectors is not None
 
             # ノードを訓練テストvalidationに分ける
@@ -91,20 +91,20 @@ class GraphDataset(Dataset):
             train_node, valid_node = train_test_split(
                 train_node, test_size=0.2, random_state=seed)
 
-            # self.train_ids = []
-            # self.valid_ids = []
-            # self.test_ids = []
+            self.train_ids = []
+            self.valid_ids = []
+            self.test_ids = []
 
-            # for n in train_node:
-            #     self.train_ids.append(int(node2id[n]))
-            # for n in valid_node:
-            #     self.valid_ids.append(int(node2id[n]))
-            # for n in test_node:
-            #     self.test_ids.append(int(node2id[n]))
+            for n in train_node:
+                self.train_ids.append(int(node2id[n]))
+            for n in valid_node:
+                self.valid_ids.append(int(node2id[n]))
+            for n in test_node:
+                self.test_ids.append(int(node2id[n]))
 
-            # self.train_ids=np.array(self.train_ids)
-            # self.valid_ids=np.array(self.valid_ids)
-            # self.test_ids=np.array(self.test_ids)
+            self.train_ids = np.array(self.train_ids)
+            self.valid_ids = np.array(self.valid_ids)
+            self.test_ids = np.array(self.test_ids)
 
             train_node_set = set(train_node)
             node_freq = list()
@@ -555,7 +555,9 @@ def preprocess_co_author_network(dir_path, undirect=True, seed=0):
 #     print(f"""Node num : {len(node2id)},
 #     Node frequency max :{np.max(list(id2freq.values()))} min :{np.min(list(id2freq.values()))} mean :{np.mean(list(id2freq.values()))},
 #     Edge num : {len(edges2freq)},
-#     Edge frequency max :{np.max(list(edges2freq.values()))} min :{np.min(list(edges2freq.values()))} mean :{np.mean(list(edges2freq.values()))}""")
+# Edge frequency max :{np.max(list(edges2freq.values()))} min
+# :{np.min(list(edges2freq.values()))} mean
+# :{np.mean(list(edges2freq.values()))}""")
 
 #     # print(set(labels))
 
@@ -565,12 +567,16 @@ def preprocess_amazon(
     dir_path
 ):
 
-    node2id = np.load("data/amazon_electronics_photo_node2id.npy", allow_pickle=True).item()
-    id2freq = np.load("data/amazon_electronics_photo_id2freq.npy", allow_pickle=True).item()
-    edges2freq = np.load("data/amazon_electronics_photo_edges2freq.npy", allow_pickle=True).item()
-    features = np.load("data/amazon_electronics_photo_features.npy", allow_pickle=True)
-    labels = np.load("data/amazon_electronics_photo_labels.npy", allow_pickle=True)
-
+    node2id = np.load(
+        "data/amazon_electronics_photo_node2id.npy", allow_pickle=True).item()
+    id2freq = np.load(
+        "data/amazon_electronics_photo_id2freq.npy", allow_pickle=True).item()
+    edges2freq = np.load(
+        "data/amazon_electronics_photo_edges2freq.npy", allow_pickle=True).item()
+    features = np.load(
+        "data/amazon_electronics_photo_features.npy", allow_pickle=True)
+    labels = np.load(
+        "data/amazon_electronics_photo_labels.npy", allow_pickle=True)
 
     print(f"""Node num : {len(node2id)},
     Node frequency max :{np.max(list(id2freq.values()))} min :{np.min(list(id2freq.values()))} mean :{np.mean(list(id2freq.values()))},
@@ -663,7 +669,9 @@ def preprocess_citeseer(dir_path):
 #     print(f"""Node num : {len(node2id)},
 #     Node frequency max :{np.max(list(id2freq.values()))} min :{np.min(list(id2freq.values()))} mean :{np.mean(list(id2freq.values()))},
 #     Edge num : {len(edges2freq)},
-#     Edge frequency max :{np.max(list(edges2freq.values()))} min :{np.min(list(edges2freq.values()))} mean :{np.mean(list(edges2freq.values()))}""")
+# Edge frequency max :{np.max(list(edges2freq.values()))} min
+# :{np.min(list(edges2freq.values()))} mean
+# :{np.mean(list(edges2freq.values()))}""")
 
 #     return node2id, id2freq, edges2freq, features, labels
 
@@ -674,7 +682,7 @@ def preprocess_pubmed(dir_path):
 
     # ラベルがついていないものはとりのぞく
     idx_with_label = np.where(labels)[0]
-    idx_with_label = idx_with_label[:int(len(idx_with_label)*0.4)]
+    idx_with_label = idx_with_label[:int(len(idx_with_label) * 0.4)]
 
     labels = labels[idx_with_label]
     labels = np.where(labels)[1]
@@ -714,6 +722,7 @@ def preprocess_pubmed(dir_path):
     # sys.exit()
 
     return node2id, id2freq, edges2freq, features, labels
+
 
 def preprocess_cora(dir_path):
     all_data = []
